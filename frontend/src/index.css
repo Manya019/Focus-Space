@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0b0f13;
+  --panel: #0f1720;
+  --muted: #94a3b8;
+  --accent: #5865f2;
+}
+
+.dark body {
+  background-color: var(--bg);
+}
+
+body {
+  @apply bg-gray-900 text-gray-100 antialiased;
+}
+
+.panel {
+  @apply bg-[#0f1720] rounded-md shadow-sm p-4;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.text-muted {
+  color: var(--muted);
+}
+
+.bg-panel {
+  background-color: var(--panel);
+}
+
+.bg-backdrop {
+  background-color: var(--bg);
+}
+
+.bg-accent {
+  background-color: var(--accent);
+}
+
+.progress-bar {
+  @apply h-2 rounded-full bg-gray-700 overflow-hidden;
+}
+
+.progress-bar > i {
+  @apply block h-2 bg-gradient-to-r from-[#3b82f6] to-[#7c3aed];
+}
