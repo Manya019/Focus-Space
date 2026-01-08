@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import SessionPanel from '../components/SessionPanel';
 import PresenceList from '../components/PresenceList';
 import ChatBox from '../components/ChatBox';
@@ -16,6 +16,17 @@ export default function ReadingRoom({ user }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const draft = useSessionDraft();
+
+  // States for movable and minimizable box
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [initialPosition, setInitialPosition] = useState({ x: 0, y: 0 });
+  const boxRef = useRef(null);
+
+  // State for sidebar toggle
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   // Connect WebSocket and join reading_room channel
   useEffect(() => {
@@ -141,6 +152,59 @@ export default function ReadingRoom({ user }) {
     }
   };
 
+  // Drag handlers
+  const handleMouseDown = (e) => {
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX,
+      y: e.clientY,
+    });
+    setInitialPosition(position);
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+    const deltaX = e.clientX - dragStart.x;
+    const deltaY = e.clientY - dragStart.y;
+    setPosition({
+      x: initialPosition.x + deltaX,
+      y: initialPosition.y + deltaY,
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    } else {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
+  // Center the box on mount and when minimized state changes
+  useEffect(() => {
+    const centerBox = () => {
+      const boxWidth = 320; // w-80
+      const boxHeight = isMinimized ? 48 : 384; // h-12 or max-h-96 approx
+      setPosition({
+        x: Math.max(0, (window.innerWidth - boxWidth) / 2),
+        y: Math.max(0, (window.innerHeight - boxHeight) / 2),
+      });
+    };
+    centerBox();
+    window.addEventListener('resize', centerBox);
+    return () => window.removeEventListener('resize', centerBox);
+  }, [isMinimized]);
+
   if (!safeUser) {
     return (
       <div className="p-6 text-center">
@@ -149,23 +213,17 @@ export default function ReadingRoom({ user }) {
     );
   }
 
-  const getMoodStyles = () => {
-    switch (mood) {
-      case 'active':
-        return 'bg-gradient-to-br from-blue-950/30 via-slate-900/30 to-teal-950/30';
-      case 'calm':
-        return 'bg-gradient-to-br from-indigo-950/30 via-slate-900/30 to-purple-950/30';
-      default: // idle
-        return 'bg-gradient-to-br from-slate-900/30 via-gray-900/30 to-zinc-900/30';
-    }
-  };
-
   return (
-    <div className={`space-y-4 transition-colors duration-1000 p-4 rounded-xl ${getMoodStyles()}`}>
+    <div className="space-y-4 p-4 rounded-xl">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">Reading Room</h2>
-        <div className="text-xs px-2 py-1 rounded-full bg-black/20 border border-white/10 capitalize text-muted">
-          Mood: {mood}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="text-white hover:text-gray-300 text-lg px-2 py-1 bg-black/20 rounded"
+          >
+            {isSidebarOpen ? '◁' : '▷'}
+          </button>
         </div>
       </div>
 
@@ -173,60 +231,85 @@ export default function ReadingRoom({ user }) {
         <div className="text-red-400 p-3 bg-[#2a1111] rounded-md">{error}</div>
       )}
 
-      <div className="md:flex md:gap-4">
-        <div className="md:w-1/3 space-y-4">
-          <SessionPanel draft={draft} onSubmit={submitSession} />
-          <div className="panel">
-            <h4 className="text-sm font-semibold mb-2">Past sessions</h4>
-            {loading ? (
-              <p className="text-sm text-muted">Loading...</p>
-            ) : logs.length === 0 ? (
-              <p className="text-sm text-muted">No reading sessions yet. Start one above!</p>
-            ) : (
-              <ul className="space-y-3 text-sm">
-                {logs.map((l, i) => (
-                  <li key={i} className="border border-gray-700 rounded-md p-3 bg-[#07101a]">
-                    <div className="font-medium">{l.book_name || 'Untitled'}</div>
-                    <div className="text-muted">Pages: {l.pages_read || 0}/{l.target_pages || 0}</div>
-                    {l.reflection && (
-                      <div className="mt-2">
-                        <strong>Notes:</strong> {l.reflection}
+      {/* Movable and Minimizable Box for Session Content */}
+      <div
+        ref={boxRef}
+        className={`absolute bg-black/80 border border-gray-600 rounded-lg shadow-lg cursor-move will-change-transform ${
+          isMinimized ? 'w-64 h-12' : 'w-80 h-auto max-h-96'
+        } overflow-hidden`}
+        style={{ left: 0, top: 0, transform: `translate(${position.x}px, ${position.y}px)`, zIndex: 10 }}
+        onMouseDown={handleMouseDown}
+      >
+        <div
+          className="flex items-center justify-between p-2 bg-gray-800 rounded-t-lg"
+        >
+          <h4 className="text-sm font-semibold text-white">Reading Sessions</h4>
+          <button
+            onClick={() => setIsMinimized(!isMinimized)}
+            className="text-white hover:text-gray-300 text-lg"
+          >
+            {isMinimized ? '+' : '-'}
+          </button>
+        </div>
+        {!isMinimized && (
+          <div className="p-4 space-y-4 overflow-y-auto max-h-80">
+            <SessionPanel draft={draft} onSubmit={submitSession} />
+            <div className="panel">
+              <h4 className="text-sm font-semibold mb-2">Past sessions</h4>
+              {loading ? (
+                <p className="text-sm text-muted">Loading...</p>
+              ) : logs.length === 0 ? (
+                <p className="text-sm text-muted">No reading sessions yet. Start one above!</p>
+              ) : (
+                <ul className="space-y-3 text-sm">
+                  {logs.map((l, i) => (
+                    <li key={i} className="border border-gray-700 rounded-md p-3 bg-[#07101a]">
+                      <div className="font-medium">{l.book_name || 'Untitled'}</div>
+                      <div className="text-muted">Pages: {l.pages_read || 0}/{l.target_pages || 0}</div>
+                      {l.reflection && (
+                        <div className="mt-2">
+                          <strong>Notes:</strong> {l.reflection}
+                        </div>
+                      )}
+                      <div className="text-xs text-muted mt-1">
+                        {l.created_at ? new Date(l.created_at).toLocaleString() : 'Unknown time'}
                       </div>
-                    )}
-                    <div className="text-xs text-muted mt-1">
-                      {l.created_at ? new Date(l.created_at).toLocaleString() : 'Unknown time'}
-                    </div>
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        onClick={() => handleEditLog(l)}
-                        className="px-2 py-1 bg-blue-600 rounded text-xs hover:bg-blue-700"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteLog(l.id)}
-                        className="px-2 py-1 bg-red-600 rounded text-xs hover:bg-red-700"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          onClick={() => handleEditLog(l)}
+                          className="px-2 py-1 bg-blue-600 rounded text-xs hover:bg-blue-700"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteLog(l.id)}
+                          className="px-2 py-1 bg-red-600 rounded text-xs hover:bg-red-700"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {isSidebarOpen && (
+        <div className="md:flex md:gap-4">
+          <div className="md:flex-1 space-y-4">
+            <PresenceList presence={presence} />
+            <ChatBox
+              channel="reading_room"
+              user={safeUser}
+              messages={messages}
+              onSend={(body) => sendMessage('reading_room', body)}
+            />
           </div>
         </div>
-
-        <div className="md:flex-1 space-y-4">
-          <PresenceList presence={presence} />
-          <ChatBox
-            channel="reading_room"
-            user={safeUser}
-            messages={messages}
-            onSend={(body) => sendMessage('reading_room', body)}
-          />
-        </div>
-      </div>
+      )}
     </div>
   );
 }

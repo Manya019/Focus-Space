@@ -29,6 +29,9 @@ export default function App() {
   }, [user]);
 
   const renderView = () => {
+    if (!user) {
+      return <Login onAuthed={(u) => { setUser(u); setView('room'); }} />;
+    }
     switch (view) {
       case 'profile':
         return <Profile user={user} logout={logout} onUserUpdate={setUser} />;
@@ -39,9 +42,17 @@ export default function App() {
       case 'reviews':
         return <BookReviews user={user} />;
       default:
-        return <Login onAuthed={(u) => { setUser(u); setView('room'); }} />;
+        return <ReadingRoom user={user} />;
     }
   };
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-backdrop text-gray-100 flex items-center justify-center">
+        <Login onAuthed={(u) => { setUser(u); setView('room'); }} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-backdrop text-gray-100">
