@@ -96,10 +96,6 @@ export default function Profile({ user, logout, onUserUpdate }) {
                 <span className="text-muted">Favorite genre:</span>
                 <span>{profile.genre || 'Not set'}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted">Likes:</span>
-                <span>{profile.likes || 'Not set'}</span>
-              </div>
             </div>
           )}
         </div>

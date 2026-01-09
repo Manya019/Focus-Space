@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-export default function ChatBox({ channel, user, messages, onSend, readOnly = false }) {
+export default function ChatBox({ channel, user, messages, onSend, readOnly = false, onUserClick }) {
   const [text, setText] = useState('');
   const endRef = useRef();
 
@@ -24,12 +24,18 @@ export default function ChatBox({ channel, user, messages, onSend, readOnly = fa
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((m, i) => (
           <div key={i} className="flex items-start space-x-3">
-            <div className="w-8 h-8 bg-accent rounded-full flex items-center justify-center text-white text-xs font-bold">
+            <div
+              className={`w-8 h-8 bg-accent rounded-full flex items-center justify-center text-white text-xs font-bold ${onUserClick ? 'cursor-pointer' : ''}`}
+              onClick={() => onUserClick?.(m.user)}
+            >
               {(m.user?.username || m.user?.email || 'A')[0].toUpperCase()}
             </div>
             <div className="flex-1">
               <div className="flex items-baseline space-x-2">
-                <span className="font-semibold text-sm text-gray-200">
+                <span
+                  className={`font-semibold text-sm text-gray-200 ${onUserClick ? 'cursor-pointer' : ''}`}
+                  onClick={() => onUserClick?.(m.user)}
+                >
                   {m.user?.username || m.user?.email || 'Anonymous'}
                 </span>
                 <span className="text-xs text-muted">

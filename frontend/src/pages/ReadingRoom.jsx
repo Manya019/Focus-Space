@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState, useRef } from 'react';
 import SessionPanel from '../components/SessionPanel';
 import PresenceList from '../components/PresenceList';
 import ChatBox from '../components/ChatBox';
-import { fetchLogs, createLog, updateLog, deleteLog } from '../services/api';
+import ChatLogo from '../components/ChatLogo';
+import { fetchLogs, createLog, updateLog, deleteLog, getProfile } from '../services/api';
 import { connectWs, joinChannel, sendMessage, updatePresence } from '../services/ws';
 import { useSessionDraft } from '../state/session';
 
@@ -26,7 +27,12 @@ export default function ReadingRoom({ user }) {
   const boxRef = useRef(null);
 
   // State for sidebar toggle
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // State for user profile modal
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
 
   // Connect WebSocket and join reading_room channel
   useEffect(() => {
@@ -35,7 +41,11 @@ export default function ReadingRoom({ user }) {
     const socket = connectWs(safeUser.token, (msg) => {
       if (msg.channel === 'reading_room') {
         if (msg.type === 'chat') {
-          setMessages((m) => [...m, msg]);
+          setMessages((m) => {
+            const exists = m.some(existing => existing.body === msg.body && existing.user?.id === msg.user?.id);
+            if (!exists) return [...m, msg];
+            return m;
+          });
         }
         if (msg.type === 'presence') {
           setPresence(msg.payload || []);
@@ -143,8 +153,8 @@ export default function ReadingRoom({ user }) {
         target_pages: Number(draft.targetPages || 0),
         reflection: draft.notes,
       };
-      await createLog(payload);
-      setLogs((l) => [payload, ...l]);
+      const saved = await createLog(payload);
+      setLogs((l) => [{ ...payload, id: saved.id }, ...l]);
       draft.clear();
     } catch (err) {
       console.error('Failed to create log:', err);
@@ -214,16 +224,11 @@ export default function ReadingRoom({ user }) {
   }
 
   return (
-    <div className="space-y-4 p-4 rounded-xl">
+    <div className="space-y-4 p-1 rounded-xl">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">Reading Room</h2>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="text-white hover:text-gray-300 text-lg px-2 py-1 bg-black/20 rounded"
-          >
-            {isSidebarOpen ? '◁' : '▷'}
-          </button>
+          <ChatLogo onClick={() => setIsSidebarOpen(!isSidebarOpen)} />
         </div>
       </div>
 
@@ -237,7 +242,7 @@ export default function ReadingRoom({ user }) {
         className={`absolute bg-black/80 border border-gray-600 rounded-lg shadow-lg cursor-move will-change-transform ${
           isMinimized ? 'w-64 h-12' : 'w-80 h-auto max-h-96'
         } overflow-hidden`}
-        style={{ left: 0, top: 0, transform: `translate(${position.x}px, ${position.y}px)`, zIndex: 10 }}
+        style={{ left: 0, top: 0, transform: `translate(${position.x}px, ${position.y}px)`, zIndex: 40 }}
         onMouseDown={handleMouseDown}
       >
         <div
@@ -298,15 +303,63 @@ export default function ReadingRoom({ user }) {
       </div>
 
       {isSidebarOpen && (
-        <div className="md:flex md:gap-4">
-          <div className="md:flex-1 space-y-4">
+        <div className="md:flex md:gap-4 h-[80vh]">
+          <div className="md:w-1/3 overflow-y-auto">
             <PresenceList presence={presence} />
+          </div>
+          <div className="md:flex-1 flex flex-col">
             <ChatBox
               channel="reading_room"
               user={safeUser}
               messages={messages}
               onSend={(body) => sendMessage('reading_room', body)}
+              onUserClick={async (user) => {
+                setSelectedUser(user);
+                try {
+                  const profile = await getProfile(user.id);
+                  setUserProfile(profile);
+                } catch (err) {
+                  setUserProfile(null);
+                }
+                setShowUserModal(true);
+              }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* User Profile Modal */}
+      {showUserModal && selectedUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-panel rounded-md p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">User Profile</h2>
+              <button onClick={() => setShowUserModal(false)} className="text-muted hover:text-white">✕</button>
+            </div>
+            <div className="flex items-center space-x-4 mb-4">
+              <div className="w-16 h-16 bg-accent rounded-full flex items-center justify-center text-white text-xl font-bold">
+                {(selectedUser.username || 'U')[0].toUpperCase()}
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">{selectedUser.username || 'User'}</h3>
+              </div>
+            </div>
+            {userProfile && (
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-muted">About:</span>
+                  <span>{userProfile.about || 'Not set'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Favorite genre:</span>
+                  <span>{userProfile.genre || 'Not set'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Likes:</span>
+                  <span>{userProfile.likes || 'Not set'}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

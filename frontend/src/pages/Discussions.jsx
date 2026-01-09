@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ChatBox from '../components/ChatBox';
-import { getMessages, createMessage, fetchLogs } from '../services/api';
+import { getMessages, createMessage, fetchLogs, getProfile } from '../services/api';
 import { connectWs, joinChannel, sendMessage } from '../services/ws';
 
 export default function Discussions({ user }) {
@@ -11,6 +11,11 @@ export default function Discussions({ user }) {
   const [loading, setLoading] = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [error, setError] = useState('');
+
+  // State for user profile modal
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
 
   const safeUser = user || null;
 
@@ -64,7 +69,11 @@ export default function Discussions({ user }) {
     const socket = connectWs(safeUser.token, (msg) => {
       if (msg.channel === 'general' && msg.type === 'chat') {
         // Add new message to current session messages only
-        setMessages((m) => [...m, msg]);
+        setMessages((m) => {
+          const exists = m.some(existing => existing.body === msg.body && existing.user?.id === msg.user?.id);
+          if (!exists) return [...m, msg];
+          return m;
+        });
       }
     });
 
@@ -104,7 +113,7 @@ export default function Discussions({ user }) {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col overflow-hidden">
       <div className="mb-4">
         <h3 className="text-lg font-semibold">#general</h3>
       </div>
@@ -119,7 +128,7 @@ export default function Discussions({ user }) {
         <div className="flex-1 flex flex-col space-y-4">
           {/* Message History Section */}
           {showHistory && (
-            <div className="bg-panel rounded-md p-4 space-y-4">
+            <div className="bg-panel rounded-md p-4 max-h-64 overflow-y-auto">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-medium text-muted">Message History</h4>
                 <button
@@ -129,88 +138,73 @@ export default function Discussions({ user }) {
                   Hide History
                 </button>
               </div>
-              
+
               {/* Chat Message History */}
-              <div className="max-h-64 overflow-y-auto">
-                <div className="mb-4">
-                  <h5 className="text-xs font-medium text-muted mb-2">Chat Messages</h5>
-                  <ChatBox
-                    channel="general"
-                    user={safeUser}
-                    messages={historyMessages.map((m) => ({
-                      type: 'chat',
-                      channel: 'general',
-                      body: m.body,
-                      user: {
-                        id: m.user_id,
-                        username: m.username,
-                        email: m.email,
-                      },
-                      created_at: m.created_at,
-                    }))}
-                    onSend={() => {}} // Disable sending in history
-                    readOnly={true}
-                  />
-                </div>
-                
-                {/* Reading Session Logs */}
-                <div>
-                  <h5 className="text-xs font-medium text-muted mb-2">Reading Session Logs</h5>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {readingLogs.length > 0 ? (
-                      readingLogs.map((log, i) => (
-                        <div key={i} className="bg-[#07101a] rounded-md p-3 border border-gray-800">
-                          <div className="flex items-start space-x-3">
-                            <div className="w-6 h-6 bg-accent rounded-full flex items-center justify-center text-white text-xs font-bold">
-                              📖
+              <div className="mb-4">
+                <h5 className="text-xs font-medium text-muted mb-2">Chat Messages</h5>
+                <ChatBox
+                  channel="general"
+                  user={safeUser}
+                  messages={historyMessages.map((m) => ({
+                    type: 'chat',
+                    channel: 'general',
+                    body: m.body,
+                    user: {
+                      id: m.user_id,
+                      username: m.username,
+                      email: m.email,
+                    },
+                    created_at: m.created_at,
+                  }))}
+                  onSend={() => {}} // Disable sending in history
+                  readOnly={true}
+                />
+              </div>
+
+              {/* Reading Session Logs */}
+              <div>
+                <h5 className="text-xs font-medium text-muted mb-2">Reading Session Logs</h5>
+                <div className="space-y-2">
+                  {readingLogs.length > 0 ? (
+                    readingLogs.map((log, i) => (
+                      <div key={i} className="bg-[#07101a] rounded-md p-3 border border-gray-800">
+                        <div className="flex items-start space-x-3">
+                          <div className="w-6 h-6 bg-accent rounded-full flex items-center justify-center text-white text-xs font-bold">
+                            📖
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-baseline space-x-2 mb-1">
+                              <span className="font-semibold text-sm text-gray-200">
+                                {log.book_name}
+                              </span>
+                              <span className="text-xs text-muted">
+                                {log.created_at ? new Date(log.created_at).toLocaleDateString() : ''}
+                              </span>
                             </div>
-                            <div className="flex-1">
-                              <div className="flex items-baseline space-x-2 mb-1">
-                                <span className="font-semibold text-sm text-gray-200">
-                                  {log.book_name}
-                                </span>
-                                <span className="text-xs text-muted">
-                                  {log.created_at ? new Date(log.created_at).toLocaleDateString() : ''}
-                                </span>
-                              </div>
-                              <div className="text-sm text-gray-100">
-                                Read {log.pages_read} pages {log.target_pages > 0 ? `of ${log.target_pages} target` : ''}
-                                {log.reflection && (
-                                  <div className="mt-2 text-xs text-muted italic">
-                                    "{log.reflection}"
-                                  </div>
-                                )}
-                              </div>
+                            <div className="text-sm text-gray-100">
+                              Read {log.pages_read} pages {log.target_pages > 0 ? `of ${log.target_pages} target` : ''}
+                              {log.reflection && (
+                                <div className="mt-2 text-xs text-muted italic">
+                                  "{log.reflection}"
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
-                      ))
-                    ) : (
-                      <div className="text-xs text-muted text-center py-4">
-                        No reading session logs found
                       </div>
-                    )}
-                  </div>
+                    ))
+                  ) : (
+                    <div className="text-xs text-muted text-center py-4">
+                      No reading session logs found
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           )}
 
-          {/* Load History Button */}
-          {!showHistory && (
-            <div className="text-center">
-              <button
-                onClick={loadMessageHistory}
-                disabled={loadingHistory}
-                className="text-sm text-muted hover:text-white disabled:opacity-50"
-              >
-                {loadingHistory ? 'Loading History...' : 'Load Message History'}
-              </button>
-            </div>
-          )}
-
           {/* Current Session Messages */}
-          <div className="bg-panel rounded-md overflow-hidden flex-1">
+          <div className="bg-panel rounded-md overflow-hidden h-[80vh]">
             <div className="p-3 border-b border-gray-700">
               <span className="text-xs text-muted">Current Session</span>
             </div>
@@ -229,7 +223,49 @@ export default function Discussions({ user }) {
                 created_at: m.created_at,
               }))}
               onSend={handleSend}
+              onUserClick={async (user) => {
+                setSelectedUser(user);
+                try {
+                  const profile = await getProfile(user.id);
+                  setUserProfile(profile);
+                } catch (err) {
+                  setUserProfile(null);
+                }
+                setShowUserModal(true);
+              }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* User Profile Modal */}
+      {showUserModal && selectedUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-panel rounded-md p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">User Profile</h2>
+              <button onClick={() => setShowUserModal(false)} className="text-muted hover:text-white">✕</button>
+            </div>
+            <div className="flex items-center space-x-4 mb-4">
+              <div className="w-16 h-16 bg-accent rounded-full flex items-center justify-center text-white text-xl font-bold">
+                {(selectedUser.username || 'U')[0].toUpperCase()}
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">{selectedUser.username || 'User'}</h3>
+              </div>
+            </div>
+            {userProfile && (
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-muted">About:</span>
+                  <span>{userProfile.about || 'Not set'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Favorite genre:</span>
+                  <span>{userProfile.genre || 'Not set'}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

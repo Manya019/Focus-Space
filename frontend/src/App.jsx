@@ -58,7 +58,7 @@ export default function App() {
     <div className="min-h-screen bg-backdrop text-gray-100">
       <header className="flex items-center gap-4 px-4 py-3 border-b border-gray-800">
         <div className="flex items-center gap-3">
-          <button className="md:hidden p-2 rounded-md hover:bg-gray-800" onClick={() => setSidebarOpen((s) => !s)} aria-label="Toggle sidebar">☰</button>
+          <button className="p-2 rounded-md hover:bg-gray-800" onClick={() => setSidebarOpen((s) => !s)} aria-label="Toggle sidebar">☰</button>
           <h1 className="text-lg font-semibold">Reading Room</h1>
         </div>
         <div className="ml-auto flex items-center gap-2">
@@ -78,7 +78,7 @@ export default function App() {
       </header>
 
       <div className="md:flex">
-        <aside className={`fixed inset-y-0 left-0 z-30 w-64 transform bg-panel p-4 md:static md:translate-x-0 md:w-60 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <aside className={`w-64 bg-panel p-4 md:w-60 ${sidebarOpen ? 'block' : 'hidden'}`}>
           <div className="flex items-center justify-between mb-4">
             <strong>Channels</strong>
             <button className="md:hidden text-sm text-muted" onClick={() => setSidebarOpen(false)}>Close</button>
@@ -128,17 +128,6 @@ export default function App() {
         <main className="flex-1 p-4 md:mx-4 md:my-4 md:rounded-md">
           {renderView()}
         </main>
-
-        <aside className={`fixed inset-y-0 right-0 z-30 w-72 transform bg-panel p-4 md:static md:translate-x-0 md:w-72 ${usersOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-          <div className="flex items-center justify-between mb-4">
-            <strong>Active</strong>
-            <button className="md:hidden text-sm text-muted" onClick={() => setUsersOpen(false)}>Close</button>
-          </div>
-          <div className="space-y-3 overflow-y-auto max-h-[70vh]">
-            {/* Presence list will be rendered inside ReadingRoom via component, keep this pane for desktop */}
-            <p className="text-sm text-muted">Open a room to see active users</p>
-          </div>
-        </aside>
       </div>
     </div>
   );

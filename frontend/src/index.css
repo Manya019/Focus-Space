@@ -48,3 +48,22 @@ body {
 .progress-bar > i {
   @apply block h-2 bg-gradient-to-r from-[#3b82f6] to-[#7c3aed];
 }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0f1720;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #7e81a1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4c5fd5;
+}
+

@@ -51,15 +51,6 @@ export default function ProfileForm({ initial, onSave }) {
           onChange={(e) => setAbout(e.target.value)}
         />
       </div>
-      <div>
-        <label className="block text-sm font-medium mb-1">Other Interests</label>
-        <input
-          className="w-full bg-[#07101a] rounded-md px-3 py-2 text-sm border border-gray-800 focus:outline-none focus:ring-2 focus:ring-accent"
-          placeholder="e.g., Hobbies, favorite authors"
-          value={likes}
-          onChange={(e) => setLikes(e.target.value)}
-        />
-      </div>
       <button
         type="submit"
         className="px-4 py-2 bg-accent rounded-md text-sm font-medium hover:opacity-90"
