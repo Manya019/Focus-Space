@@ -13,11 +13,12 @@ type Message struct {
 }
 
 type WSMessage struct {
-	Type    string      `json:"type"`    // "chat", "presence", "join", "leave"
-	Channel string      `json:"channel"` // "reading_room", "general"
-	Payload interface{} `json:"payload,omitempty"`
-	User    *WSUser     `json:"user,omitempty"`
-	Body    string      `json:"body,omitempty"`
+	Type      string      `json:"type"`    // "chat", "presence", "join", "leave"
+	Channel   string      `json:"channel"` // "reading_room", "general"
+	Payload   interface{} `json:"payload,omitempty"`
+	User      *WSUser     `json:"user,omitempty"`
+	Body      string      `json:"body,omitempty"`
+	CreatedAt time.Time   `json:"created_at,omitempty"`
 }
 
 type WSUser struct {
@@ -27,4 +28,3 @@ type WSUser struct {
 	Book        string `json:"book,omitempty"`
 	TargetPages int    `json:"target_pages,omitempty"`
 }
-

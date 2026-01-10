@@ -135,7 +135,9 @@ func serveWs(hub *Hub, c *gin.Context) {
 			// Fetch user details from DB
 			var u models.User
 			err := db.DB.QueryRow(`SELECT username, email FROM users WHERE id=$1`, userID).Scan(&u.Username, &u.Email)
-			if err == nil {
+			if err != nil {
+				log.Printf("Failed to fetch user details for user %d: %v", userID, err)
+			} else {
 				username = u.Username
 				email = u.Email
 			}
@@ -207,7 +209,11 @@ func serveWs(hub *Hub, c *gin.Context) {
 	go func() {
 		for msg := range client.Send {
 			if err := client.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-				log.Printf("ws write error for user=%d: %v", client.UserID, err)
+				if websocket.IsCloseError(err) {
+					log.Printf("ws write closed for user=%d: %v", client.UserID, err)
+				} else {
+					log.Printf("ws write error for user=%d: %v", client.UserID, err)
+				}
 				break
 			}
 		}

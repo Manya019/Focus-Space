@@ -16,12 +16,12 @@ export default function ChatBox({ channel, user, messages, onSend, readOnly = fa
 
   const formatTime = (dateString) => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
   };
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="overflow-y-auto p-4 space-y-4">
         {messages.map((m, i) => (
           <div key={i} className="flex items-start space-x-3">
             <div
@@ -33,7 +33,7 @@ export default function ChatBox({ channel, user, messages, onSend, readOnly = fa
             <div className="flex-1">
               <div className="flex items-baseline space-x-2">
                 <span
-                  className={`font-semibold text-sm text-gray-200 ${onUserClick ? 'cursor-pointer' : ''}`}
+                  className={` text-m text-white ${onUserClick ? 'cursor-pointer' : ''}`}
                   onClick={() => onUserClick?.(m.user)}
                 >
                   {m.user?.username || m.user?.email || 'Anonymous'}
@@ -42,7 +42,7 @@ export default function ChatBox({ channel, user, messages, onSend, readOnly = fa
                   {m.created_at ? formatTime(m.created_at) : ''}
                 </span>
               </div>
-              <div className="text-sm text-gray-100 mt-1">
+              <div className="text-m text-white mt-1">
                 {m.body}
               </div>
             </div>
@@ -51,7 +51,7 @@ export default function ChatBox({ channel, user, messages, onSend, readOnly = fa
         <div ref={endRef} />
       </div>
       {!readOnly && (
-        <div className="p-4 border-t border-gray-800">
+        <div className="p-4 border-t border-gray-800 mt-auto">
           <div className="flex gap-2">
             <input
               className="flex-1 bg-[#07101a] rounded-md px-3 py-2 text-sm border border-gray-800 focus:outline-none focus:ring-2 focus:ring-accent"

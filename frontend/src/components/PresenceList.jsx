@@ -14,8 +14,8 @@ export default function PresenceList({ presence = [] }) {
                   {(p.username || 'A')[0].toUpperCase()}
                 </div>
                 <div className="flex-1">
-                  <div className="font-medium">{p.username || 'Anon'}</div>
-                  <div className="text-xs text-muted">{p.book || 'No book'}</div>
+                  <div className="text-white">{p.username || 'Anon'}</div>
+                  <div className="text-xs text-white ">{p.book || 'No book'}</div>
                 </div>
               </div>
               <div className="progress-bar">

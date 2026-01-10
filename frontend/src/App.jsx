@@ -22,7 +22,7 @@ export default function App() {
 
   useEffect(() => {
     if (user?.id) {
-      getUserReviews(user.id).then(setUserReviews).catch(() => setUserReviews([]));
+      getUserReviews(user.id).then(data => setUserReviews(Array.isArray(data) ? data : [])).catch(() => setUserReviews([]));
     } else {
       setUserReviews([]);
     }
@@ -56,7 +56,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-backdrop text-gray-100">
-      <header className="flex items-center gap-4 px-4 py-3 border-b border-gray-800">
+      <header className="flex items-center gap-1 px-4 border-b border-gray-800">
         <div className="flex items-center gap-3">
           <button className="p-2 rounded-md hover:bg-gray-800" onClick={() => setSidebarOpen((s) => !s)} aria-label="Toggle sidebar">☰</button>
           <h1 className="text-lg font-semibold">Reading Room</h1>
@@ -99,7 +99,7 @@ export default function App() {
             <ul className="text-sm text-muted space-y-1">
               {user ? (
                 <>
-                  {userReviews.length > 0 ? (
+                  {userReviews && userReviews.length > 0 ? (
                     <>
                       <li className="font-medium text-gray-300 mt-4 mb-4">Reviewed Books:</li>
                       {userReviews.slice(0, 3).map(review => (
@@ -116,10 +116,7 @@ export default function App() {
                   )}
                 </>
               ) : (
-                <>
-                  <li>Joined 2 days ago</li>
-                  <li>Last session: 6 hrs</li>
-                </>
+                <li></li>
               )}
             </ul>
           </div>

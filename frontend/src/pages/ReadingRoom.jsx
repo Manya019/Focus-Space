@@ -3,6 +3,9 @@ import SessionPanel from '../components/SessionPanel';
 import PresenceList from '../components/PresenceList';
 import ChatBox from '../components/ChatBox';
 import ChatLogo from '../components/ChatLogo';
+import ShuffleLogo from '../components/ShuffleLogo';
+import FullScreenLogo from '../components/FullScreenLogo';
+import PomodoroTimer from '../components/PomodoroTimer';
 import { fetchLogs, createLog, updateLog, deleteLog, getProfile } from '../services/api';
 import { connectWs, joinChannel, sendMessage, updatePresence } from '../services/ws';
 import { useSessionDraft } from '../state/session';
@@ -10,6 +13,7 @@ import { useSessionDraft } from '../state/session';
 export default function ReadingRoom({ user }) {
   // Safety check - ensure user is always an object
   const safeUser = user || null;
+  const containerRef = useRef(null);
   const [logs, setLogs] = useState([]);
   const [messages, setMessages] = useState([]);
   const [presence, setPresence] = useState([]);
@@ -29,6 +33,32 @@ export default function ReadingRoom({ user }) {
   // State for sidebar toggle
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+
+  // State for background
+  const [currentBg, setCurrentBg] = useState(0);
+  const backgrounds = ['image1.jpg', 'image2.jpg','image4.jpg','image5.jpg']; // Add more as provided
+
+  // State for full screen
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  // Full screen toggle
+  const toggleFullScreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullScreenChange = () => {
+      setIsFullScreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullScreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullScreenChange);
+  }, []);
+
   // State for user profile modal
   const [showUserModal, setShowUserModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -41,6 +71,7 @@ export default function ReadingRoom({ user }) {
     const socket = connectWs(safeUser.token, (msg) => {
       if (msg.channel === 'reading_room') {
         if (msg.type === 'chat') {
+          msg.created_at = new Date().toISOString();
           setMessages((m) => {
             const exists = m.some(existing => existing.body === msg.body && existing.user?.id === msg.user?.id);
             if (!exists) return [...m, msg];
@@ -176,9 +207,15 @@ export default function ReadingRoom({ user }) {
     if (!isDragging) return;
     const deltaX = e.clientX - dragStart.x;
     const deltaY = e.clientY - dragStart.y;
+    const boxWidth = boxRef.current ? boxRef.current.offsetWidth : 320;
+    const boxHeight = boxRef.current ? boxRef.current.offsetHeight : (isMinimized ? 48 : 384);
+    const newX = initialPosition.x + deltaX;
+    const newY = initialPosition.y + deltaY;
+    const clampedX = Math.max(0, Math.min(newX, window.innerWidth - boxWidth));
+    const clampedY = Math.max(0, Math.min(newY, window.innerHeight - boxHeight));
     setPosition({
-      x: initialPosition.x + deltaX,
-      y: initialPosition.y + deltaY,
+      x: clampedX,
+      y: clampedY,
     });
   };
 
@@ -200,14 +237,14 @@ export default function ReadingRoom({ user }) {
     };
   }, [isDragging]);
 
-  // Center the box on mount and when minimized state changes
+  // Center the box on mount and when minimized state changes, with offset to avoid overlap
   useEffect(() => {
     const centerBox = () => {
       const boxWidth = 320; // w-80
       const boxHeight = isMinimized ? 48 : 384; // h-12 or max-h-96 approx
       setPosition({
         x: Math.max(0, (window.innerWidth - boxWidth) / 2),
-        y: Math.max(0, (window.innerHeight - boxHeight) / 2),
+        y: Math.max(0, (window.innerHeight - boxHeight) / 2 + 120), // Offset down by 120px
       });
     };
     centerBox();
@@ -224,13 +261,30 @@ export default function ReadingRoom({ user }) {
   }
 
   return (
-    <div className="space-y-4 p-1 rounded-xl">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold">Reading Room</h2>
+    <div
+      ref={containerRef}
+      className="space-y-4 p-1 rounded-xl h-[95vh] bg-cover bg-top"
+      style={{
+        backgroundImage: `url(/src/assets/images/${backgrounds[currentBg]})`,
+        filter: isSidebarOpen ? 'brightness(1)' : 'none'
+      }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-xl font-semibold px-2">Reading Room</h2>
         <div className="flex items-center gap-2">
+          <FullScreenLogo onClick={toggleFullScreen} />
+          <ShuffleLogo onClick={() => setCurrentBg((prev) => (prev + 1) % backgrounds.length)} />
           <ChatLogo onClick={() => setIsSidebarOpen(!isSidebarOpen)} />
         </div>
       </div>
+
+      {!isSidebarOpen && (
+        <div className="flex justify-center mb-4">
+          <PomodoroTimer />
+        </div>
+      )}
+
+      
 
       {error && (
         <div className="text-red-400 p-3 bg-[#2a1111] rounded-md">{error}</div>
@@ -303,11 +357,11 @@ export default function ReadingRoom({ user }) {
       </div>
 
       {isSidebarOpen && (
-        <div className="md:flex md:gap-4 h-[80vh]">
-          <div className="md:w-1/3 overflow-y-auto">
+        <div className={`md:flex md:gap-4 ${isFullScreen ? 'h-screen' : 'h-[85vh]'}`}>
+          <div className="md:w-1/3 overflow-y-auto backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-4 shadow-2xl">
             <PresenceList presence={presence} />
           </div>
-          <div className="md:flex-1 flex flex-col">
+          <div className="md:flex-1 flex flex-col backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-4 shadow-2xl">
             <ChatBox
               channel="reading_room"
               user={safeUser}
@@ -353,10 +407,6 @@ export default function ReadingRoom({ user }) {
                 <div className="flex justify-between">
                   <span className="text-muted">Favorite genre:</span>
                   <span>{userProfile.genre || 'Not set'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted">Likes:</span>
-                  <span>{userProfile.likes || 'Not set'}</span>
                 </div>
               </div>
             )}
