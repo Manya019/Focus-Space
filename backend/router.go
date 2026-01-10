@@ -27,19 +27,20 @@ func setupRouter(hub *Hub) *gin.Engine {
 
 	frontendURL := os.Getenv("FRONTEND_URL")
 
+	origins := []string{
+		"http://localhost:5173",
+	}
+
+	if frontendURL != "" {
+		origins = append(origins, frontendURL)
+	}
+
 	r.Use(cors.New(cors.Config{
-		AllowOrigins: []string{
-			"http://localhost:5173",
-			frontendURL,
-		},
-		AllowMethods: []string{
-			"GET", "POST", "PUT", "DELETE", "OPTIONS",
-		},
-		AllowHeaders: []string{
-			"Origin", "Content-Type", "Accept", "Authorization",
-		},
+		AllowOrigins:     origins,
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		AllowCredentials: true,
-		MaxAge: 12 * time.Hour,
+		MaxAge:           12 * time.Hour,
 	}))
 
 	api := r.Group("/")
