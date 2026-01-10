@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -23,7 +24,7 @@ type Client struct {
 	Email       string
 	Book        string
 	TargetPages int
-	Channels    map[string]bool // channels this client is subscribed to
+	Channels    map[string]bool
 }
 
 type Hub struct {
@@ -31,7 +32,7 @@ type Hub struct {
 	register     chan *Client
 	unregister   chan *Client
 	broadcast    chan []byte
-	mu           sync.RWMutex // protects clients map
+	mu           sync.RWMutex
 	currentMood  string
 	lastActivity time.Time
 }
@@ -47,6 +48,9 @@ func newHub() *Hub {
 	}
 }
 
+   //Hub loop
+   
+
 func (h *Hub) run() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -55,12 +59,14 @@ func (h *Hub) run() {
 		select {
 		case <-ticker.C:
 			h.updateMood()
+
 		case client := <-h.register:
 			h.mu.Lock()
 			h.clients[client] = true
 			h.mu.Unlock()
 			h.markActivity()
-			log.Printf("hub: registered client user=%d username=%q", client.UserID, client.Username)
+			log.Printf("hub: registered user=%d username=%q", client.UserID, client.Username)
+
 		case client := <-h.unregister:
 			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
@@ -68,40 +74,35 @@ func (h *Hub) run() {
 				close(client.Send)
 			}
 			h.mu.Unlock()
-			log.Printf("hub: unregistered client user=%d username=%q", client.UserID, client.Username)
+			log.Printf("hub: unregistered user=%d username=%q", client.UserID, client.Username)
+
 		case message := <-h.broadcast:
-			// Parse message to get channel
 			var wsMsg models.WSMessage
 			if err := json.Unmarshal(message, &wsMsg); err != nil {
-				log.Printf("Failed to parse message: %v", err)
+				log.Printf("ws: invalid message: %v", err)
 				continue
 			}
 
-			// Update activity on chat or presence update
 			if wsMsg.Type == "chat" || wsMsg.Type == "presence_update" {
 				h.markActivity()
 			}
 
-			// Broadcast to clients subscribed to this channel
 			h.mu.RLock()
-			var clientsToSend []*Client
-			for client := range h.clients {
-				if client.Channels[wsMsg.Channel] {
-					clientsToSend = append(clientsToSend, client)
+			var targets []*Client
+			for c := range h.clients {
+				if c.Channels[wsMsg.Channel] {
+					targets = append(targets, c)
 				}
 			}
 			h.mu.RUnlock()
 
-			// Send messages outside of lock
-			for _, client := range clientsToSend {
+			for _, c := range targets {
 				select {
-				case client.Send <- message:
+				case c.Send <- message:
 				default:
 					h.mu.Lock()
-					if _, ok := h.clients[client]; ok {
-						delete(h.clients, client)
-						close(client.Send)
-					}
+					delete(h.clients, c)
+					close(c.Send)
 					h.mu.Unlock()
 				}
 			}
@@ -109,20 +110,28 @@ func (h *Hub) run() {
 	}
 }
 
+   //WebSocket upgrader
+   
+
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		frontend := os.Getenv("FRONTEND_URL")
+
+		return origin == "http://localhost:5173" ||
+			(frontend != "" && origin == frontend)
+	},
 }
+
+   //WebSocket handler
 
 func serveWs(hub *Hub, c *gin.Context) {
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Println("upgrade error:", err)
+		log.Println("ws upgrade error:", err)
 		return
 	}
 
-	log.Printf("ws: upgrade success from %s", conn.RemoteAddr())
-
-	// Extract user info from JWT token
 	userID := int64(0)
 	username := ""
 	email := ""
@@ -132,12 +141,11 @@ func serveWs(hub *Hub, c *gin.Context) {
 		claims, err := utils.ParseToken(token)
 		if err == nil {
 			userID = claims.UserID
-			// Fetch user details from DB
 			var u models.User
-			err := db.DB.QueryRow(`SELECT username, email FROM users WHERE id=$1`, userID).Scan(&u.Username, &u.Email)
-			if err != nil {
-				log.Printf("Failed to fetch user details for user %d: %v", userID, err)
-			} else {
+			err := db.DB.
+				QueryRow(`SELECT username, email FROM users WHERE id=$1`, userID).
+				Scan(&u.Username, &u.Email)
+			if err == nil {
 				username = u.Username
 				email = u.Email
 			}
@@ -155,43 +163,40 @@ func serveWs(hub *Hub, c *gin.Context) {
 
 	hub.register <- client
 
-	// reader
+
 	go func() {
 		defer func() {
 			hub.broadcastPresence()
 			hub.unregister <- client
 			client.Conn.Close()
 		}()
+
 		for {
 			_, message, err := client.Conn.ReadMessage()
 			if err != nil {
-				log.Printf("ws read error for user=%d: %v", client.UserID, err)
 				break
 			}
 
 			var wsMsg models.WSMessage
 			if err := json.Unmarshal(message, &wsMsg); err != nil {
-				log.Printf("Failed to parse client message: %v", err)
 				continue
 			}
 
-			// Handle different message types
 			switch wsMsg.Type {
 			case "join":
-				// Subscribe to channel
 				client.Channels[wsMsg.Channel] = true
 				hub.broadcastPresence()
+
 			case "chat":
-				// Add user info to message
 				wsMsg.User = &models.WSUser{
 					ID:       client.UserID,
 					Username: client.Username,
 					Email:    client.Email,
 				}
-				msgBytes, _ := json.Marshal(wsMsg)
-				hub.broadcast <- msgBytes
+				msg, _ := json.Marshal(wsMsg)
+				hub.broadcast <- msg
+
 			case "presence_update":
-				// Update client's reading session info
 				if payload, ok := wsMsg.Payload.(map[string]interface{}); ok {
 					if book, ok := payload["book"].(string); ok {
 						client.Book = book
@@ -205,23 +210,17 @@ func serveWs(hub *Hub, c *gin.Context) {
 		}
 	}()
 
-	// writer
 	go func() {
 		for msg := range client.Send {
 			if err := client.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-				if websocket.IsCloseError(err) {
-					log.Printf("ws write closed for user=%d: %v", client.UserID, err)
-				} else {
-					log.Printf("ws write error for user=%d: %v", client.UserID, err)
-				}
 				break
 			}
 		}
 	}()
 }
 
+
 func (h *Hub) broadcastPresence() {
-	// Get all clients in reading_room channel
 	h.mu.RLock()
 	var presence []models.WSUser
 	for c := range h.clients {
@@ -237,18 +236,17 @@ func (h *Hub) broadcastPresence() {
 	}
 	h.mu.RUnlock()
 
-	presenceMsg := models.WSMessage{
+	msg, _ := json.Marshal(models.WSMessage{
 		Type:    "presence",
 		Channel: "reading_room",
 		Payload: presence,
-	}
+	})
 
-	msgBytes, _ := json.Marshal(presenceMsg)
 	h.mu.RLock()
 	for c := range h.clients {
 		if c.Channels["reading_room"] {
 			select {
-			case c.Send <- msgBytes:
+			case c.Send <- msg:
 			default:
 			}
 		}
@@ -267,42 +265,35 @@ func (h *Hub) updateMood() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	// Count active users in reading_room
-	userCount := 0
+	count := 0
 	for c := range h.clients {
 		if c.Channels["reading_room"] {
-			userCount++
+			count++
 		}
 	}
 
-	timeSinceActivity := time.Since(h.lastActivity)
-	var newMood string
-
-	if userCount == 0 {
-		newMood = "idle"
-	} else if timeSinceActivity < 60*time.Second {
-		newMood = "active"
-	} else {
-		newMood = "calm"
+	var mood string
+	switch {
+	case count == 0:
+		mood = "idle"
+	case time.Since(h.lastActivity) < 60*time.Second:
+		mood = "active"
+	default:
+		mood = "calm"
 	}
 
-	if newMood != h.currentMood {
-		h.currentMood = newMood
-		// Broadcast mood change
-		moodMsg := models.WSMessage{
+	if mood != h.currentMood {
+		h.currentMood = mood
+		msg, _ := json.Marshal(models.WSMessage{
 			Type:    "mood",
 			Channel: "reading_room",
-			Payload: newMood,
-		}
-		msgBytes, _ := json.Marshal(moodMsg)
+			Payload: mood,
+		})
 
-		// We can't use h.broadcast channel here because we're already holding the lock
-		// and it might cause a deadlock if the run loop is waiting on the lock.
-		// Instead, we'll send directly to clients.
 		for c := range h.clients {
 			if c.Channels["reading_room"] {
 				select {
-				case c.Send <- msgBytes:
+				case c.Send <- msg:
 				default:
 				}
 			}
