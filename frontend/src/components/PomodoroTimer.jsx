@@ -61,7 +61,7 @@ export default function PomodoroTimer() {
   };
 
   return (
-    <div className="backdrop-blur-2xl bg-white/20 border border-white/25 rounded-2xl shadow-2xl p-2 transition-all duration-300 ease-in-out hover:bg-white/25 flex items-center gap-4">
+    <div className="backdrop-blur-2xl bg-white/20 border border-white/25 rounded-2xl shadow-2xl p-4 transition-all duration-300 ease-in-out hover:bg-white/25 flex flex-col items-center gap-4">
       <div className="flex-1">
         <h3 className="text-sm font-semibold text-white/90">
           {isWork ? 'Work' : cycles % 4 === 0 ? 'Long Break' : 'Break'}
