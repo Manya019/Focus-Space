@@ -2,24 +2,36 @@ import { useEffect, useRef, useCallback } from 'react';
 
 export function useWebSocket(token, channel = 'reading_room', onMessage) {
   const wsRef = useRef(null);
+  const queueRef = useRef([]); // message queue
+
+  const flushQueue = () => {
+    while (queueRef.current.length > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(queueRef.current.shift());
+    }
+  };
 
   const sendMessage = useCallback((type, payload) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      const msg = { type, channel };
-      if (payload) msg.payload = payload;
-      wsRef.current.send(JSON.stringify(msg));
+    const msg = JSON.stringify({ type, channel, payload });
+
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(msg);
+    } else {
+      queueRef.current.push(msg); //  queue while connecting
     }
   }, [channel]);
 
   useEffect(() => {
     if (!token) return;
-    const wsUrl = `${import.meta.env.VITE_WS_URL}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
 
+    const wsUrl = `${import.meta.env.VITE_WS_URL}?token=${encodeURIComponent(token)}`;
     wsRef.current = new WebSocket(wsUrl);
 
     wsRef.current.onopen = () => {
-      // Automatically send join message
+      // Join room
       wsRef.current.send(JSON.stringify({ type: 'join', channel }));
+
+      // Flush any queued messages
+      flushQueue();
     };
 
     wsRef.current.onmessage = (event) => {
@@ -31,19 +43,15 @@ export function useWebSocket(token, channel = 'reading_room', onMessage) {
       }
     };
 
-    wsRef.current.onerror = (error) => {
-      console.error('WebSocket error:', error);
+    wsRef.current.onerror = (e) => {
+      console.error('WebSocket error:', e);
     };
 
     wsRef.current.onclose = () => {
       console.log('WebSocket closed');
     };
 
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
+    return () => wsRef.current?.close();
   }, [token, channel, onMessage]);
 
   return { sendMessage };
