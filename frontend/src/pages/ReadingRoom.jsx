@@ -10,8 +10,12 @@ import { fetchLogs, createLog, updateLog, deleteLog, getProfile } from '../servi
 import { connectWs, joinChannel, sendMessage, updatePresence } from '../services/ws';
 import { useSessionDraft } from '../state/session';
 
-/* 🔥 Vite + Vercel safe background loader */
-const backgrounds = ['image1.jpg', 'image2.jpg','image4.jpg','image5.jpg']; // Add more as provided
+const backgroundModules = import.meta.glob(
+  "../assets/images/*.{jpg,jpeg,png}",
+  { eager: true }
+);
+
+const backgrounds = Object.values(backgroundModules).map(m => m.default);
 
 export default function ReadingRoom({ user }) {
   // Safety check - ensure user is always an object
@@ -39,8 +43,7 @@ export default function ReadingRoom({ user }) {
 
 
   // State for background
-  const [currentBg, setCurrentBg] = useState(0);
-  const backgrounds = ['image1.jpg', 'image2.jpg','image4.jpg','image5.jpg']; // Add more as provided
+  const [currentBg, setCurrentBg] = useState(0); 
 
   // State for full screen
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -206,7 +209,7 @@ export default function ReadingRoom({ user }) {
     <div
       ref={containerRef}
       className="relative h-[95vh] p-2 rounded-xl bg-cover bg-center"
-      style={{ backgroundImage: `url(/src/assets/images/${backgrounds[currentBg]})` }}
+      style={{ backgroundImage: `url(${backgrounds[currentBg]})` }}
     >
       <div className="flex justify-between mb-2">
         <h2 className="text-xl font-semibold">Reading Room</h2>
