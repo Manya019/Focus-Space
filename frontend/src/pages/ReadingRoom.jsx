@@ -10,6 +10,11 @@ import { fetchLogs, createLog, updateLog, deleteLog, getProfile } from '../servi
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useSessionDraft } from '../state/session';
 
+const backgrounds = Object.values(
+  import.meta.glob("../assets/images/*.{jpg}", { eager: true, as: "url" })
+);
+
+
 export default function ReadingRoom({ user }) {
   // Safety check - ensure user is always an object
   const safeUser = user || null;
@@ -36,7 +41,6 @@ export default function ReadingRoom({ user }) {
 
   // State for background
   const [currentBg, setCurrentBg] = useState(0);
-  const backgrounds = ['image1.jpg', 'image2.jpg','image4.jpg','image5.jpg']; // Add more as provided
 
   // State for full screen
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -252,7 +256,7 @@ export default function ReadingRoom({ user }) {
       ref={containerRef}
       className="space-y-4 p-1 rounded-xl h-[95vh] bg-cover bg-top"
       style={{
-        backgroundImage: `url(/src/assets/images/${backgrounds[currentBg]})`,
+        backgroundImage: `url(${backgrounds[currentBg]})`,
         filter: isSidebarOpen ? 'brightness(1)' : 'none'
       }}
     >

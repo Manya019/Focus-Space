@@ -13,7 +13,8 @@ export function useWebSocket(token, channel = 'reading_room', onMessage) {
 
   useEffect(() => {
     if (!token) return;
-    const wsUrl = `${import.meta.env.VITE_WS_URL}/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+    const wsUrl = `${import.meta.env.VITE_WS_URL}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+
     wsRef.current = new WebSocket(wsUrl);
 
     wsRef.current.onopen = () => {
