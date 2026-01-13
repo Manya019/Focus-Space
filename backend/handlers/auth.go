@@ -106,6 +106,31 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"token": token, "user_id": user.ID})
-}
+	// Fetch additional profile data
+	var profile models.User
+	err = db.DB.QueryRow(`
+		SELECT id, username, email, genre, about, likes, created_at
+		FROM users WHERE id=$1`, user.ID).
+		Scan(&profile.ID, &profile.Username, &profile.Email, &profile.Genre, &profile.About, &profile.Likes, &profile.CreatedAt)
+	if err != nil {
+		log.Printf("Failed to fetch profile for user %d: %v", user.ID, err)
+		// Continue with basic data if profile fetch fails
+		c.JSON(http.StatusOK, gin.H{
+			"token":    token,
+			"user_id":  user.ID,
+			"username": user.Username,
+			"email":    user.Email,
+		})
+		return
+	}
 
+	c.JSON(http.StatusOK, gin.H{
+		"token":    token,
+		"user_id":  profile.ID,
+		"username": profile.Username,
+		"email":    profile.Email,
+		"genre":    profile.Genre,
+		"about":    profile.About,
+		"likes":    profile.Likes,
+	})
+}

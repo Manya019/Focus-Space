@@ -69,9 +69,21 @@ export default function Discussions({ user }) {
     const socket = connectWs(safeUser.token, (msg) => {
       if (msg.channel === 'general' && msg.type === 'chat') {
         // Add new message to current session messages only
+        // Use a more robust duplicate check based on message content and timestamp
         setMessages((m) => {
-          const exists = m.some(existing => existing.body === msg.body && existing.user?.id === msg.user?.id);
-          if (!exists) return [...m, msg];
+          const newMsg = {
+            ...msg,
+            user_id: msg.user?.id,
+            username: msg.user?.username,
+            email: msg.user?.email,
+            created_at: msg.created_at || new Date().toISOString(),
+          };
+          const exists = m.some(existing =>
+            existing.body === newMsg.body &&
+            existing.user_id === newMsg.user_id &&
+            Math.abs(new Date(existing.created_at) - new Date(newMsg.created_at)) < 5000 // within 5 seconds
+          );
+          if (!exists) return [...m, newMsg];
           return m;
         });
       }
