@@ -50,6 +50,12 @@ export const createMessage = (body, token) =>
     headers: { Authorization: token }
   });
 
+export const deleteMessage = (id, token) =>
+  send(`/messages/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: token }
+  });
+
 export const getMessages = (channel, limit = 50) =>
   send(`/messages/${channel}?limit=${limit}`, { method: 'GET' });
 

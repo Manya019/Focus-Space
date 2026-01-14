@@ -32,10 +32,18 @@ CREATE TABLE IF NOT EXISTS messages (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     channel TEXT NOT NULL,
     body TEXT NOT NULL,
+    reply_to_id INTEGER REFERENCES messages(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_channel_created ON messages(channel, created_at DESC);
+
+-- Backfill / upgrades for existing deployments
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to_id INTEGER;
+ALTER TABLE messages
+    ADD CONSTRAINT IF NOT EXISTS fk_messages_reply_to
+    FOREIGN KEY (reply_to_id) REFERENCES messages(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_messages_reply_to_id ON messages(reply_to_id);
 
 CREATE TABLE IF NOT EXISTS books (
     id SERIAL PRIMARY KEY,

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -128,7 +129,8 @@ func GetUserReviews(c *gin.Context) {
 		JOIN books b ON r.book_id = b.id
 		WHERE r.user_id = $1 ORDER BY r.created_at DESC`, userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed"})
+		log.Printf("GetUserReviews query failed user_id=%d: %v", userID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed", "details": err.Error()})
 		return
 	}
 	defer rows.Close()

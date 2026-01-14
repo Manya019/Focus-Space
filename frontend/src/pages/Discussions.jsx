@@ -1,7 +1,31 @@
 import React, { useEffect, useState } from 'react';
 import ChatBox from '../components/ChatBox';
-import { getMessages, createMessage, fetchLogs, getProfile } from '../services/api';
-import { connectWs, joinChannel, sendMessage } from '../services/ws';
+import { getMessages, createMessage, deleteMessage, fetchLogs, getProfile } from '../services/api';
+import { connectWs, joinChannel, sendMessage, sendDelete } from '../services/ws';
+
+function normalizeApiMessage(m) {
+  return {
+    id: m.id,
+    body: m.body,
+    created_at: m.created_at,
+    reply_to_id: m.reply_to_id ?? null,
+    user: {
+      id: m.user_id,
+      username: m.username,
+      email: m.email,
+    },
+  };
+}
+
+function normalizeWsMessage(msg) {
+  return {
+    id: msg.id,
+    body: msg.body,
+    created_at: msg.created_at || new Date().toISOString(),
+    reply_to_id: msg.reply_to_id ?? null,
+    user: msg.user,
+  };
+}
 
 export default function Discussions({ user }) {
   const [messages, setMessages] = useState([]);
@@ -29,8 +53,8 @@ export default function Discussions({ user }) {
     setLoading(true);
     getMessages('general', 20)
       .then((data) => {
-        console.log('Loaded recent messages:', data);
-        setMessages(Array.isArray(data) ? data : []);
+        const list = Array.isArray(data) ? data.map(normalizeApiMessage) : [];
+        setMessages(list);
         setLoading(false);
       })
       .catch((err) => {
@@ -42,16 +66,19 @@ export default function Discussions({ user }) {
 
   // Load message history when requested
   const loadMessageHistory = async () => {
-    if (loadingHistory) return;
+    if (loadingHistory || !safeUser?.id) return;
 
     setLoadingHistory(true);
     try {
       const [chatData, logsData] = await Promise.all([
-        getMessages('general', 100), // Load more messages for history
-        fetchLogs(safeUser.id) // Load reading logs
+        getMessages('general', 100),
+        fetchLogs(safeUser.id)
       ]);
-      
-      setHistoryMessages(Array.isArray(chatData) ? chatData.slice(20) : []); // Skip the recent 20
+
+      const normalized = Array.isArray(chatData) ? chatData.map(normalizeApiMessage) : [];
+
+      // Preserve previous behavior: first 20 are current session, rest is "history".
+      setHistoryMessages(normalized.slice(20));
       setReadingLogs(Array.isArray(logsData) ? logsData : []);
       setShowHistory(true);
     } catch (err) {
@@ -66,26 +93,20 @@ export default function Discussions({ user }) {
   useEffect(() => {
     if (!safeUser?.id || !safeUser?.token) return;
 
-    const socket = connectWs(safeUser.token, (msg) => {
-      if (msg.channel === 'general' && msg.type === 'chat') {
-        // Add new message to current session messages only
-        // Use a more robust duplicate check based on message content and timestamp
-        setMessages((m) => {
-          const newMsg = {
-            ...msg,
-            user_id: msg.user?.id,
-            username: msg.user?.username,
-            email: msg.user?.email,
-            created_at: msg.created_at || new Date().toISOString(),
-          };
-          const exists = m.some(existing =>
-            existing.body === newMsg.body &&
-            existing.user_id === newMsg.user_id &&
-            Math.abs(new Date(existing.created_at) - new Date(newMsg.created_at)) < 5000 // within 5 seconds
-          );
-          if (!exists) return [...m, newMsg];
-          return m;
+    const { socket, unsubscribe } = connectWs(safeUser.token, (msg) => {
+      if (msg.channel !== 'general') return;
+
+      if (msg.type === 'chat') {
+        const incoming = normalizeWsMessage(msg);
+        setMessages((prev) => {
+          if (incoming.id && prev.some((m) => m.id === incoming.id)) return prev;
+          return [...prev, incoming];
         });
+        return;
+      }
+
+      if (msg.type === 'delete' && msg.id) {
+        setMessages((prev) => prev.filter((m) => m.id !== msg.id));
       }
     });
 
@@ -96,23 +117,96 @@ export default function Discussions({ user }) {
         joinChannel('general');
       });
     }
+
+    return () => {
+      unsubscribe?.();
+    };
   }, [safeUser]);
 
-  const handleSend = async (body) => {
+  const handleSend = async (body, replyTo) => {
     if (!safeUser?.token) {
       setError('Not logged in');
       return;
     }
 
+    const reply_to_id = replyTo?.id ?? null;
+    const tempId = -Date.now();
+    const createdAt = new Date().toISOString();
+
+    const tempMessage = {
+      id: tempId,
+      body,
+      created_at: createdAt,
+      reply_to_id,
+      user: {
+        id: safeUser.id,
+        username: safeUser.username,
+        email: safeUser.email,
+      },
+    };
+
+    setMessages((prev) => [...prev, tempMessage]);
+
     try {
-      // Persist via REST API first
-      const saved = await createMessage({ channel: 'general', body }, safeUser.token);
-      // Then send via WebSocket for real-time broadcast
-      sendMessage('general', body);
+      // Persist via REST API first (gives us a stable DB id for threads/deletes)
+      const saved = await createMessage(
+        { channel: 'general', body, reply_to_id },
+        safeUser.token
+      );
+
+      const savedId = saved?.id;
+      const savedCreatedAt = saved?.created_at || createdAt;
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempId
+            ? { ...m, id: savedId, created_at: savedCreatedAt, reply_to_id }
+            : m
+        )
+      );
+
+      // Broadcast via WebSocket for realtime updates to other clients
+      sendMessage('general', {
+        id: savedId,
+        body,
+        reply_to_id,
+        created_at: savedCreatedAt,
+      });
+
       setError('');
     } catch (err) {
       console.error('Failed to send message:', err);
       setError(err.message || 'Failed to send message');
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+    }
+  };
+
+  const handleDelete = async (msg) => {
+    if (!safeUser?.token) {
+      setError('Not logged in');
+      return;
+    }
+
+    if (!msg?.id || msg.id < 0) return;
+    if (msg.user?.id !== safeUser.id) return;
+
+    const id = msg.id;
+    // Optimistic UI
+    setMessages((prev) => prev.filter((m) => m.id !== id));
+
+    try {
+      await deleteMessage(id, safeUser.token);
+      sendDelete('general', id);
+    } catch (err) {
+      setError(err.message || 'Failed to delete message');
+      // Fallback: reload current messages to restore consistency
+      try {
+        const data = await getMessages('general', 20);
+        const list = Array.isArray(data) ? data.map(normalizeApiMessage) : [];
+        setMessages(list);
+      } catch {
+        // ignore
+      }
     }
   };
 
@@ -126,12 +220,21 @@ export default function Discussions({ user }) {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <div className="mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <h3 className="text-lg font-semibold">#general</h3>
+        <button
+          onClick={loadMessageHistory}
+          disabled={loadingHistory}
+          className="text-xs text-muted hover:text-white"
+        >
+          {loadingHistory ? 'Loading…' : 'Load history'}
+        </button>
       </div>
+
       {error && (
         <div className="text-red-400 p-3 bg-[#2a1111] rounded-md mb-4">{error}</div>
       )}
+
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
           <p className="text-sm text-muted">Loading messages...</p>
@@ -157,18 +260,8 @@ export default function Discussions({ user }) {
                 <ChatBox
                   channel="general"
                   user={safeUser}
-                  messages={historyMessages.map((m) => ({
-                    type: 'chat',
-                    channel: 'general',
-                    body: m.body,
-                    user: {
-                      id: m.user_id,
-                      username: m.username,
-                      email: m.email,
-                    },
-                    created_at: m.created_at,
-                  }))}
-                  onSend={() => {}} // Disable sending in history
+                  messages={historyMessages}
+                  onSend={() => {}}
                   readOnly={true}
                 />
               </div>
@@ -223,18 +316,9 @@ export default function Discussions({ user }) {
             <ChatBox
               channel="general"
               user={safeUser}
-              messages={messages.map((m) => ({
-                type: 'chat',
-                channel: 'general',
-                body: m.body,
-                user: {
-                  id: m.user_id,
-                  username: m.username,
-                  email: m.email,
-                },
-                created_at: m.created_at,
-              }))}
+              messages={messages}
               onSend={handleSend}
+              onDelete={handleDelete}
               onUserClick={async (user) => {
                 setSelectedUser(user);
                 try {

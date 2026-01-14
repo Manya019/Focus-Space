@@ -69,7 +69,15 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"token": token, "user_id": id})
+	c.JSON(http.StatusOK, gin.H{
+		"token":    token,
+		"user_id":  id,
+		"username": req.Username,
+		"email":    strings.ToLower(req.Email),
+		"genre":    "",
+		"about":    "",
+		"likes":    "",
+	})
 }
 
 // Login handles POST /auth/login

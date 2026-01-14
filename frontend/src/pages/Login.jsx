@@ -16,7 +16,17 @@ export default function Login({ onAuthed }) {
         mode === 'register'
           ? await register({ email, username, password })
           : await login({ email, password });
-      onAuthed({ id: data.user_id, token: data.token, email, username });
+
+      // Backend returns canonical username/email (and profile fields on login).
+      onAuthed({
+        id: data.user_id,
+        token: data.token,
+        email: data.email ?? email,
+        username: data.username ?? username,
+        genre: data.genre,
+        about: data.about,
+        likes: data.likes,
+      });
     } catch (err) {
       setError(err.message || 'failed');
     }
@@ -24,7 +34,12 @@ export default function Login({ onAuthed }) {
 
   const googleLogin = () => {
     // Redirect to backend Google OAuth endpoint
-    window.location.href = 'http://localhost:8080/auth/google/login';
+    const base = import.meta.env.VITE_API_URL;
+    if (!base) {
+      setError('Missing VITE_API_URL');
+      return;
+    }
+    window.location.href = `${base}/auth/google/login`;
   };
 
   return (

@@ -7,7 +7,7 @@ import ShuffleLogo from "../components/ShuffleLogo";
 import FullScreenLogo from "../components/FullScreenLogo";
 import PomodoroTimer from "../components/PomodoroTimer";
 import { fetchLogs, createLog, updateLog, deleteLog, getProfile } from '../services/api';
-import { connectWs, joinChannel, sendMessage, updatePresence } from '../services/ws';
+import { connectWs, joinChannel, sendMessage, sendDelete, updatePresence } from '../services/ws';
 import { useSessionDraft } from '../state/session';
 
 const backgroundModules = import.meta.glob(
@@ -74,35 +74,38 @@ export default function ReadingRoom({ user }) {
   useEffect(() => {
     if (!safeUser?.token) return;
 
-    const socket = connectWs(safeUser.token, (msg) => {
-      if (msg.channel === 'reading_room') {
-        if (msg.type === 'chat') {
-          msg.created_at = new Date().toISOString();
-          setMessages((m) => {
-            const exists = m.some(existing => existing.body === msg.body && existing.user?.id === msg.user?.id);
-            if (!exists) return [...m, msg];
-            return m;
-          });
-        }
-        if (msg.type === 'presence') setPresence(msg.payload || []);
-        if (msg.type === 'mood') setMood(msg.payload);
+    const { unsubscribe } = connectWs(safeUser.token, (msg) => {
+      if (msg.channel !== 'reading_room') return;
+
+      if (msg.type === 'chat') {
+        const created_at = msg.created_at || new Date().toISOString();
+        setMessages((prev) => {
+          if (msg.id && prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, { ...msg, created_at }];
+        });
+        return;
       }
+
+      if (msg.type === 'delete' && msg.id) {
+        setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+        return;
+      }
+
+      if (msg.type === 'presence') setPresence(msg.payload || []);
+      if (msg.type === 'mood') setMood(msg.payload);
     });
 
     joinChannel('reading_room');
 
     return () => {
-      socket.close();
+      unsubscribe?.();
     };
   }, [safeUser]);
 
   // Presence
   useEffect(() => {
     if (draft.book && draft.targetPages) {
-      updatePresence({
-        book: draft.book,
-        target_pages: Number(draft.targetPages),
-      });
+      updatePresence(draft.book, Number(draft.targetPages));
     }
   }, [draft.book, draft.targetPages]);
 
@@ -240,7 +243,18 @@ export default function ReadingRoom({ user }) {
               channel="reading_room"
               user={safeUser}
               messages={messages}
-              onSend={(text) => sendMessage("chat", { text })}
+              onSend={(text, replyTo) =>
+                sendMessage("reading_room", {
+                  body: text,
+                  reply_to_id: replyTo?.id ?? null,
+                })
+              }
+              onDelete={(m) => {
+                if (!m?.id) return;
+                if (m.user?.id !== safeUser.id) return;
+                setMessages((prev) => prev.filter((x) => x.id !== m.id));
+                sendDelete('reading_room', m.id);
+              }}
               onUserClick={async (u) => {
                 const profile = await getProfile(u.id);
                 alert(profile.username);

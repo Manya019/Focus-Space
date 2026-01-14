@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,8 +49,7 @@ func newHub() *Hub {
 	}
 }
 
-   //Hub loop
-   
+//Hub loop
 
 func (h *Hub) run() {
 	ticker := time.NewTicker(10 * time.Second)
@@ -110,20 +110,36 @@ func (h *Hub) run() {
 	}
 }
 
-   //WebSocket upgrader
-   
+//WebSocket upgrader
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
 		frontend := os.Getenv("FRONTEND_URL")
 
-		return origin == "http://localhost:5173" ||
-			(frontend != "" && origin == frontend)
+		// Allow localhost for development
+		if origin == "http://localhost:5173" {
+			return true
+		}
+
+		// Allow configured frontend URL
+		if frontend != "" && origin == frontend {
+			return true
+		}
+
+		// In production, allow common frontend origins if FRONTEND_URL is not set
+		// This is more permissive for production deployments
+		if frontend == "" {
+			// Allow HTTPS origins that are likely frontend deployments
+			return origin != "" && (strings.HasPrefix(origin, "https://") ||
+				strings.HasPrefix(origin, "http://localhost"))
+		}
+
+		return false
 	},
 }
 
-   //WebSocket handler
+//WebSocket handler
 
 func serveWs(hub *Hub, c *gin.Context) {
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -163,7 +179,6 @@ func serveWs(hub *Hub, c *gin.Context) {
 
 	hub.register <- client
 
-
 	go func() {
 		defer func() {
 			hub.broadcastPresence()
@@ -188,6 +203,36 @@ func serveWs(hub *Hub, c *gin.Context) {
 				hub.broadcastPresence()
 
 			case "chat":
+				// Clients currently send chat text as either `body` or `payload`.
+				// Normalize to `body` so the frontend can render it reliably.
+				if wsMsg.Body == "" {
+					if s, ok := wsMsg.Payload.(string); ok {
+						wsMsg.Body = s
+					}
+				}
+				if wsMsg.ID == 0 {
+					// reading_room messages are not persisted; generate a stable ID for threading/deletes.
+					wsMsg.ID = time.Now().UnixNano()
+				}
+				if wsMsg.CreatedAt.IsZero() {
+					wsMsg.CreatedAt = time.Now()
+				}
+				wsMsg.User = &models.WSUser{
+					ID:       client.UserID,
+					Username: client.Username,
+					Email:    client.Email,
+				}
+				msg, _ := json.Marshal(wsMsg)
+				hub.broadcast <- msg
+
+			case "delete":
+				// For #general we expect the REST API to enforce ownership; this event is for realtime UI updates.
+				if wsMsg.ID == 0 {
+					continue
+				}
+				if wsMsg.CreatedAt.IsZero() {
+					wsMsg.CreatedAt = time.Now()
+				}
 				wsMsg.User = &models.WSUser{
 					ID:       client.UserID,
 					Username: client.Username,
@@ -218,7 +263,6 @@ func serveWs(hub *Hub, c *gin.Context) {
 		}
 	}()
 }
-
 
 func (h *Hub) broadcastPresence() {
 	h.mu.RLock()

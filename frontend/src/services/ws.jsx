@@ -1,96 +1,190 @@
 let ws = null;
-let messageHandlers = [];
+const listeners = new Set();
 let userToken = null;
+let reconnectTimer = null;
 
 const WS_BASE = import.meta.env.VITE_WS_URL;
 
 if (!WS_BASE) {
-  throw new Error("VITE_WS_URL is not defined. Set it in Vercel and redeploy.");
+  throw new Error('VITE_WS_URL is not defined. Set it in your deployment env and redeploy.');
 }
 
+function normalizeWsBase(base) {
+  const url = new URL(base, window.location.href);
+
+  // Allow VITE_WS_URL to be set to an HTTP(S) backend base.
+  if (url.protocol === 'http:') url.protocol = 'ws:';
+  if (url.protocol === 'https:') url.protocol = 'wss:';
+
+  if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
+    throw new Error(`VITE_WS_URL must be ws:// or wss:// (or http(s)://). Got: ${url.protocol}`);
+  }
+
+  // Backend exposes WebSocket at GET /ws
+  if (!url.pathname || url.pathname === '/') {
+    url.pathname = '/ws';
+  }
+
+  return url;
+}
+
+function buildWsUrl(token) {
+  const url = normalizeWsBase(WS_BASE);
+  if (token) url.searchParams.set('token', token);
+  return url.toString();
+}
+
+function scheduleReconnect() {
+  if (!userToken) return;
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
+    // Reconnect without adding more listeners.
+    connectWs(userToken);
+  }, 2000);
+}
+
+function ensureOpenSend(payload) {
+  const socket = ws;
+  if (!socket) return;
+
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(payload);
+    return;
+  }
+
+  socket.addEventListener(
+    'open',
+    () => {
+      try {
+        socket.send(payload);
+      } catch {
+        // ignore
+      }
+    },
+    { once: true }
+  );
+}
+
+// connectWs returns { socket, unsubscribe }.
+// unsubscribe is crucial to avoid accumulating handlers when navigating between pages.
 export function connectWs(token, onMessage) {
   userToken = token;
+  if (onMessage) listeners.add(onMessage);
 
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    if (!messageHandlers.includes(onMessage)) {
-      messageHandlers.push(onMessage);
+  const unsubscribe = () => {
+    if (onMessage) listeners.delete(onMessage);
+  };
+
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    return { socket: ws, unsubscribe };
+  }
+
+  const url = buildWsUrl(token);
+  const socket = new WebSocket(url);
+  ws = socket;
+
+  socket.onopen = () => {
+    console.log('WebSocket connected:', url);
+
+    // Default: always join reading room; other pages can join additional channels.
+    try {
+      socket.send(
+        JSON.stringify({
+          type: 'join',
+          channel: 'reading_room',
+        })
+      );
+    } catch {
+      // ignore
     }
-    return ws;
-  }
+  };
 
-  try {
-    const url = `${WS_BASE}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
-    ws = new WebSocket(url);
+  socket.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      listeners.forEach((handler) => handler?.(msg));
+    } catch (err) {
+      console.error('Failed to parse WS message:', err);
+    }
+  };
 
-    ws.onopen = () => {
-      console.log("WebSocket connected:", url);
+  socket.onerror = (error) => {
+    console.error('WebSocket error:', error);
+    console.error('WebSocket URL:', url);
+    console.error('WebSocket readyState:', socket.readyState);
+  };
 
-      if (!messageHandlers.includes(onMessage)) {
-        messageHandlers.push(onMessage);
-      }
+  socket.onclose = () => {
+    console.log('WebSocket closed, reconnecting...');
 
-      // Auto join reading room
-      ws.send(JSON.stringify({
-        type: "join",
-        channel: "reading_room"
-      }));
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        messageHandlers.forEach((handler) => handler?.(msg));
-      } catch (err) {
-        console.error("Failed to parse WS message:", err);
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
-    };
-
-    ws.onclose = () => {
-      console.log("WebSocket closed, reconnecting...");
+    // Only clear the global if this socket is still the current one.
+    if (ws === socket) {
       ws = null;
+    }
 
-      setTimeout(() => {
-        if (userToken) {
-          connectWs(userToken, onMessage);
-        }
-      }, 2000);
-    };
-  } catch (err) {
-    console.error("Failed to create WebSocket:", err);
-  }
+    scheduleReconnect();
+  };
 
-  return ws;
+  return { socket, unsubscribe };
 }
 
 export function joinChannel(channel) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({
-    type: "join",
-    channel
-  }));
+  if (!channel) return;
+  ensureOpenSend(
+    JSON.stringify({
+      type: 'join',
+      channel,
+    })
+  );
 }
 
-export function sendMessage(channel, payload) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({
-    type: "chat",
-    channel,
-    payload
-  }));
+export function sendMessage(channel, body) {
+  if (!channel) return;
+
+  // Allow `sendMessage(channel, { body, id, reply_to_id, created_at })` for threaded chat.
+  let msgBody = body;
+  let id;
+  let reply_to_id;
+  let created_at;
+  if (typeof body === 'object' && body !== null) {
+    msgBody = body.body;
+    id = body.id;
+    reply_to_id = body.reply_to_id;
+    created_at = body.created_at;
+  }
+
+  ensureOpenSend(
+    JSON.stringify({
+      type: 'chat',
+      channel,
+      body: msgBody,
+      id,
+      reply_to_id,
+      created_at,
+    })
+  );
+}
+
+export function sendDelete(channel, id) {
+  if (!channel || !id) return;
+  ensureOpenSend(
+    JSON.stringify({
+      type: 'delete',
+      channel,
+      id,
+    })
+  );
 }
 
 export function updatePresence(book, targetPages) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({
-    type: "presence_update",
-    channel: "reading_room",
-    payload: {
-      book,
-      target_pages: targetPages
-    }
-  }));
+  ensureOpenSend(
+    JSON.stringify({
+      type: 'presence_update',
+      channel: 'reading_room',
+      payload: {
+        book,
+        target_pages: targetPages,
+      },
+    })
+  );
 }

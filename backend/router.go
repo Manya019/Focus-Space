@@ -63,6 +63,7 @@ func setupRouter(hub *Hub) *gin.Engine {
 
 		api.POST("/messages", handlers.CreateMessage)
 		api.GET("/messages/:channel", handlers.GetMessages)
+		api.DELETE("/messages/:id", handlers.DeleteMessage)
 
 		api.GET("/books", handlers.GetBooks)
 		api.POST("/books", handlers.CreateBook)

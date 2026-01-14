@@ -11,7 +11,14 @@ export function useWebSocket(token, channel = 'reading_room', onMessage) {
   };
 
   const sendMessage = useCallback((type, payload) => {
-    const msg = JSON.stringify({ type, channel, payload });
+    // Match backend WSMessage schema: chat text should go in `body`.
+    const msgObj = { type, channel };
+    if (type === 'chat') {
+      msgObj.body = payload;
+    } else {
+      msgObj.payload = payload;
+    }
+    const msg = JSON.stringify(msgObj);
 
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(msg);
@@ -23,7 +30,14 @@ export function useWebSocket(token, channel = 'reading_room', onMessage) {
   useEffect(() => {
     if (!token) return;
 
-    const wsUrl = `${import.meta.env.VITE_WS_URL}?token=${encodeURIComponent(token)}`;
+    // Allow VITE_WS_URL to be a ws(s)://... URL or an http(s)://... backend base.
+    const base = import.meta.env.VITE_WS_URL;
+    const url = new URL(base, window.location.href);
+    if (url.protocol === 'http:') url.protocol = 'ws:';
+    if (url.protocol === 'https:') url.protocol = 'wss:';
+    if (!url.pathname || url.pathname === '/') url.pathname = '/ws';
+    url.searchParams.set('token', token);
+    const wsUrl = url.toString();
     wsRef.current = new WebSocket(wsUrl);
 
     wsRef.current.onopen = () => {
