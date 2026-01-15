@@ -24,25 +24,13 @@ export default function ChatBox({
   const [messageText, setMessageText] = useState('');
   const endRef = useRef();
 
-  const { roots, childrenByParentId, byId } = useMemo(() => {
+  const { roots, byId } = useMemo(() => {
     const byId = new Map();
     for (const m of messages || []) {
       if (m?.id) byId.set(m.id, m);
     }
 
-    const childrenByParentId = new Map();
-    for (const m of messages || []) {
-      const parentId = m?.reply_to_id;
-      if (!parentId) continue;
-      if (!childrenByParentId.has(parentId)) childrenByParentId.set(parentId, []);
-      childrenByParentId.get(parentId).push(m);
-    }
-
-    const roots = (messages || []).filter((m) => {
-      const parentId = m?.reply_to_id;
-      if (!parentId) return true;
-      return !byId.has(parentId);
-    });
+    const roots = messages || [];
 
     const sortByTime = (a, b) => {
       const ta = a?.created_at ? new Date(a.created_at).getTime() : 0;
@@ -51,11 +39,8 @@ export default function ChatBox({
     };
 
     roots.sort(sortByTime);
-    for (const [, children] of childrenByParentId) {
-      children.sort(sortByTime);
-    }
 
-    return { roots, childrenByParentId, byId };
+    return { roots, byId };
   }, [messages]);
 
   useEffect(() => {
@@ -81,18 +66,14 @@ export default function ChatBox({
     return m?.user?.id && user?.id && m.user.id === user.id;
   };
 
-  const renderMessage = (m, depth, index) => {
+  const renderMessage = (m, index) => {
     const key = messageKey(m, index);
     const avatarLabel = (m.user?.username || m.user?.email || 'A')[0].toUpperCase();
     const parent = m.reply_to_id ? byId.get(m.reply_to_id) : null;
-    const children = m.id ? childrenByParentId.get(m.id) || [] : [];
 
     return (
       <div key={key}>
-        <div
-          className="flex items-start space-x-3 group"
-          style={{ marginLeft: depth * 16 }}
-        >
+        <div className="flex items-start space-x-3 group">
           <div
             className={`w-8 h-8 bg-accent rounded-full flex items-center justify-center text-white text-xs font-bold ${
               onUserClick ? 'cursor-pointer' : ''
@@ -126,7 +107,7 @@ export default function ChatBox({
               <div className="flex gap-2 mt-1">
                 <button
                   onClick={() => setReplyTo(m)}
-                  className="opacity-0 group-hover:opacity-100 text-xs text-muted hover:text-white transition-opacity"
+                  className="text-xs text-muted hover:text-white transition-opacity"
                 >
                   Reply
                 </button>
@@ -134,7 +115,7 @@ export default function ChatBox({
                 {canDelete(m) && (
                   <button
                     onClick={() => onDelete?.(m)}
-                    className="opacity-0 group-hover:opacity-100 text-xs text-red-400 hover:text-red-300 transition-opacity"
+                    className="text-xs text-red-400 hover:text-red-300 transition-opacity"
                   >
                     Delete
                   </button>
@@ -143,12 +124,6 @@ export default function ChatBox({
             )}
           </div>
         </div>
-
-        {children.length > 0 && (
-          <div className="mt-3 space-y-3">
-            {children.map((child, childIndex) => renderMessage(child, depth + 1, childIndex))}
-          </div>
-        )}
       </div>
     );
   };
@@ -160,8 +135,8 @@ export default function ChatBox({
         <div ref={endRef} />
       </div>
 
-      {!readOnly && (
-        <div className="p-4 border-t border-gray-800">
+      {!readOnly && !replyTo && (
+        <div className="p-4 border-t border-gray-800 mt-auto">
           <div className="flex gap-2">
             <input
               className="flex-1 bg-[#07101a] rounded-md px-3 py-2 text-sm border border-gray-800 focus:outline-none focus:ring-2 focus:ring-accent"

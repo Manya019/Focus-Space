@@ -16,6 +16,8 @@ export default function App() {
   const [userReviews, setUserReviews] = useState([]);
 
   const logout = () => {
+    // Clear localStorage on logout
+    localStorage.removeItem(`reading_room_messages_${user?.id}`);
     setUser(null);
     setView('login');
   };

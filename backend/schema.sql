@@ -39,10 +39,24 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_channel_created ON messages(channel, created_at DESC);
 
 -- Backfill / upgrades for existing deployments
-ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to_id INTEGER;
-ALTER TABLE messages
-    ADD CONSTRAINT IF NOT EXISTS fk_messages_reply_to
-    FOREIGN KEY (reply_to_id) REFERENCES messages(id) ON DELETE SET NULL;
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'reply_to_id') THEN
+        ALTER TABLE messages ADD COLUMN reply_to_id INTEGER;
+    END IF;
+END $$;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'fk_messages_reply_to'
+    ) THEN
+        ALTER TABLE messages
+            ADD CONSTRAINT fk_messages_reply_to
+            FOREIGN KEY (reply_to_id) REFERENCES messages(id) ON DELETE SET NULL;
+    END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_messages_reply_to_id ON messages(reply_to_id);
 
 CREATE TABLE IF NOT EXISTS books (

@@ -27,6 +27,7 @@ export default function ReadingRoom({ user }) {
   const [mood, setMood] = useState("idle");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [bottomMessageText, setBottomMessageText] = useState('');
 
   const draft = useSessionDraft();
 
@@ -69,6 +70,8 @@ export default function ReadingRoom({ user }) {
   // State for user profile modal
   const [showUserModal, setShowUserModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+
+  // Reading room messages are ephemeral - no localStorage persistence
 
   // WebSocket
   useEffect(() => {
@@ -137,7 +140,15 @@ export default function ReadingRoom({ user }) {
     }
   };
 
-  // Drag handlers
+const sendBottomMessage = () => {
+  if (!bottomMessageText.trim()) return;
+  sendMessage("reading_room", {
+    body: bottomMessageText,
+  });
+  setBottomMessageText('');
+};
+
+// Drag handlers
   const handleMouseDown = (e) => {
     setIsDragging(true);
     setDragStart({ x: e.clientX, y: e.clientY });
@@ -211,7 +222,7 @@ export default function ReadingRoom({ user }) {
   return (
     <div
       ref={containerRef}
-      className="relative h-[95vh] p-2 rounded-xl bg-cover bg-center"
+      className="relative h-[95vh] p-2 rounded-xl bg-cover bg-center pb-16"
       style={{ backgroundImage: `url(${backgrounds[currentBg]})` }}
     >
       <div className="flex justify-between mb-2">

@@ -57,7 +57,7 @@ func CreateMessage(c *gin.Context) {
 		claims.UserID, req.Channel, req.Body, req.ReplyToID,
 	).Scan(&id, &createdAt)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save message"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save message", "details": err.Error()})
 		return
 	}
 

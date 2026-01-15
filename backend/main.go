@@ -22,10 +22,10 @@ func main() {
 		log.Fatalf("db connect failed: %v", err)
 	}
 
-	hub := newHub()
+	hub := NewHub()
 	go hub.run()
 
-	router := setupRouter(hub)
+	router := SetupRouter(hub)
 
 	// Start notification scheduler
 	scheduler := utils.NewNotificationScheduler()

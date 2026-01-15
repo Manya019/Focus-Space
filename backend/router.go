@@ -22,7 +22,7 @@ var googleOauthConfig = &oauth2.Config{
 	Endpoint: google.Endpoint,
 }
 
-func setupRouter(hub *Hub) *gin.Engine {
+func SetupRouter(hub *Hub) *gin.Engine {
 	r := gin.Default()
 
 	frontendURL := os.Getenv("FRONTEND_URL")

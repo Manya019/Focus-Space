@@ -38,7 +38,7 @@ type Hub struct {
 	lastActivity time.Time
 }
 
-func newHub() *Hub {
+func NewHub() *Hub {
 	return &Hub{
 		clients:      make(map[*Client]bool),
 		register:     make(chan *Client),
