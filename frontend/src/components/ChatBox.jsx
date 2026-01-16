@@ -68,8 +68,11 @@ export default function ChatBox({
 
   const renderMessage = (m, index) => {
     const key = messageKey(m, index);
-    const avatarLabel = (m.user?.username || m.user?.email || 'A')[0].toUpperCase();
+    // Use current user's data for consistency if this is their message
+    const messageUser = (m.user?.id === user?.id && user) ? user : m.user;
+    const avatarLabel = (messageUser?.username || messageUser?.email || 'A')[0].toUpperCase();
     const parent = m.reply_to_id ? byId.get(m.reply_to_id) : null;
+    const parentUser = parent?.user?.id === user?.id && user ? user : parent?.user;
 
     return (
       <div key={key}>
@@ -78,7 +81,7 @@ export default function ChatBox({
             className={`w-8 h-8 bg-accent rounded-full flex items-center justify-center text-white text-xs font-bold ${
               onUserClick ? 'cursor-pointer' : ''
             }`}
-            onClick={() => onUserClick?.(m.user)}
+            onClick={() => onUserClick?.(messageUser)}
           >
             {avatarLabel}
           </div>
@@ -87,16 +90,16 @@ export default function ChatBox({
             <div className="flex items-baseline space-x-2">
               <span
                 className={`text-m text-white ${onUserClick ? 'cursor-pointer' : ''}`}
-                onClick={() => onUserClick?.(m.user)}
+                onClick={() => onUserClick?.(messageUser)}
               >
-                {m.user?.username || m.user?.email || 'Anonymous'}
+                {messageUser?.username || messageUser?.email || 'Anonymous'}
               </span>
               <span className="text-xs text-muted">{formatTime(m.created_at)}</span>
             </div>
 
             {parent && (
               <div className="mt-1 text-xs text-muted border-l border-gray-700 pl-2 truncate">
-                Replying to <span className="text-gray-300">{parent.user?.username || parent.user?.email || 'Anonymous'}</span>:
+                Replying to <span className="text-gray-300">{parentUser?.username || parentUser?.email || 'Anonymous'}</span>:
                 <span className="ml-1 text-gray-400">{parent.body}</span>
               </div>
             )}

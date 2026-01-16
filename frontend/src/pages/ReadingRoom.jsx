@@ -71,7 +71,30 @@ export default function ReadingRoom({ user }) {
   const [showUserModal, setShowUserModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
 
-  // Reading room messages are ephemeral - no localStorage persistence
+  // Load messages from localStorage on mount if user is logged in
+  useEffect(() => {
+    if (safeUser?.id) {
+      const stored = localStorage.getItem(`reading_room_messages_${safeUser.id}`);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          setMessages(parsed);
+        } catch (e) {
+          console.error('Failed to parse stored messages', e);
+        }
+      }
+    } else {
+      // Clear messages when user logs out
+      setMessages([]);
+    }
+  }, [safeUser]);
+
+  // Save messages to localStorage whenever messages change
+  useEffect(() => {
+    if (safeUser?.id && messages.length > 0) {
+      localStorage.setItem(`reading_room_messages_${safeUser.id}`, JSON.stringify(messages));
+    }
+  }, [messages, safeUser]);
 
   // WebSocket
   useEffect(() => {

@@ -220,16 +220,6 @@ export default function Discussions({ user }) {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold">#general</h3>
-        <button
-          onClick={loadMessageHistory}
-          disabled={loadingHistory}
-          className="text-xs text-muted hover:text-white"
-        >
-          {loadingHistory ? 'Loading…' : 'Load history'}
-        </button>
-      </div>
 
       {error && (
         <div className="text-red-400 p-3 bg-[#2a1111] rounded-md mb-4">{error}</div>
