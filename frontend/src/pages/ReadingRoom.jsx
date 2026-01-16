@@ -6,7 +6,7 @@ import ChatLogo from "../components/ChatLogo";
 import ShuffleLogo from "../components/ShuffleLogo";
 import FullScreenLogo from "../components/FullScreenLogo";
 import PomodoroTimer from "../components/PomodoroTimer";
-import { fetchLogs, createLog, updateLog, deleteLog, getProfile } from '../services/api';
+import { fetchLogs, createLog, getProfile } from '../services/api';
 import { connectWs, joinChannel, sendMessage, sendDelete, updatePresence } from '../services/ws';
 import { useSessionDraft } from '../state/session';
 
@@ -140,7 +140,10 @@ export default function ReadingRoom({ user }) {
     if (!safeUser?.id) return;
 
     fetchLogs(safeUser.id)
-      .then((data) => setLogs(Array.isArray(data) ? data : []))
+      .then((data) => {
+        const sortedData = Array.isArray(data) ? data.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)) : [];
+        setLogs(sortedData);
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [safeUser]);
@@ -148,19 +151,36 @@ export default function ReadingRoom({ user }) {
   // Save session
   const submitSession = async () => {
     try {
+      console.log('Submitting session:', { safeUser, draft });
+      if (!safeUser?.id) {
+        throw new Error('User not authenticated');
+      }
+      if (!draft.book || !draft.targetPages) {
+        throw new Error('Book name and target pages are required');
+      }
       const payload = {
         user_id: safeUser.id,
         book_name: draft.book,
-        pages_read: Number(draft.pages),
+        pages_read: Number(draft.pages) || 0,
         target_pages: Number(draft.targetPages),
-        reflection: draft.notes,
+        reflection: draft.notes || '',
       };
+      console.log('Payload:', payload);
       const saved = await createLog(payload);
+      console.log('Saved log:', saved);
       setLogs((l) => [{ ...payload, id: saved.id }, ...l]);
       draft.clear();
     } catch (err) {
-      setError(err.message);
+      console.error('Submit session error:', err);
+      setError(err.message || 'Failed to submit log');
     }
+  };
+
+  // Handle log updates from SessionPanel
+  const handleLogUpdate = (updatedLogs) => {
+    // Sort logs by created_at descending to ensure logs[0] is the latest
+    const sortedLogs = updatedLogs.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    setLogs(sortedLogs);
   };
 
 const sendBottomMessage = () => {
@@ -229,10 +249,10 @@ const sendBottomMessage = () => {
   useEffect(() => {
     const centerBox = () => {
       const boxWidth = 320; // w-80
-      const boxHeight = isMinimized ? 48 : 384; // h-12 or max-h-96 approx
+      const boxHeight = isMinimized ? 48 : 384; 
       setPosition({
         x: Math.max(0, (window.innerWidth - boxWidth) / 2),
-        y: Math.max(0, (window.innerHeight - boxHeight) / 2 + 120), // Offset down by 120px
+        y: Math.max(0, (window.innerHeight - boxHeight) / 2 + 120), 
       });
     };
     centerBox();
@@ -249,7 +269,9 @@ const sendBottomMessage = () => {
       style={{ backgroundImage: `url(${backgrounds[currentBg]})` }}
     >
       <div className="flex justify-between mb-2">
-        <h2 className="text-xl font-semibold">Reading Room</h2>
+        <div>
+          <h2 className="text-xl font-semibold">Reading Room</h2>
+        </div>
         <div className="flex gap-2">
           <FullScreenLogo onClick={toggleFullScreen} />
           <ShuffleLogo
@@ -260,6 +282,22 @@ const sendBottomMessage = () => {
           <ChatLogo onClick={() => setIsSidebarOpen((s) => !s)} />
         </div>
       </div>
+      {logs.length > 0 && !isSidebarOpen && (
+        <div className="mt-2 p-3 bg-black/30 rounded-lg">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-white">Currently Reading: {logs[0].book_name}</span>
+            <span className="text-xs text-white/70">{logs[0].pages_read}/{logs[0].target_pages} pages</span>
+          </div>
+          <div className="w-full bg-gray-700 rounded-full h-2">
+            <div
+              className="bg-accent h-2 rounded-full transition-all duration-300"
+              style={{
+                width: `${Math.min(100, (logs[0].pages_read / logs[0].target_pages) * 100)}%`
+              }}
+            ></div>
+          </div>
+        </div>
+      )}
 
       {!isSidebarOpen && (
         <div className="flex justify-center">
@@ -311,6 +349,8 @@ const sendBottomMessage = () => {
           isMinimized={isMinimized}
           onMinimize={() => setIsMinimized(!isMinimized)}
           logs={logs}
+          user={safeUser}
+          onLogsUpdate={handleLogUpdate}
         />
       </div>
     </div>

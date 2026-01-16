@@ -4,6 +4,7 @@ import Profile from './pages/Profile';
 import ReadingRoom from './pages/ReadingRoom';
 import Discussions from './pages/Discussions';
 import BookReviews from './pages/BookReviews';
+import PomodoroTimer from './components/PomodoroTimer';
 import { getUserReviews } from './services/api';
 
 const views = ['login', 'profile', 'room', 'discussions', 'reviews'];

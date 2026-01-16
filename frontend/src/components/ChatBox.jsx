@@ -6,6 +6,27 @@ function formatTime(dateString) {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
+function formatDate(dateString) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (date.toDateString() === today.toDateString()) {
+    return 'Today';
+  } else if (date.toDateString() === yesterday.toDateString()) {
+    return 'Yesterday';
+  } else {
+    return date.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  }
+}
+
+function getMessageDate(dateString) {
+  if (!dateString) return '';
+  return new Date(dateString).toDateString();
+}
+
 function messageKey(m, index) {
   return m?.id ?? `${m?.created_at ?? 'no-ts'}:${m?.user?.id ?? 'no-user'}:${index}`;
 }
@@ -131,10 +152,35 @@ export default function ChatBox({
     );
   };
 
+  const renderMessagesWithDates = () => {
+    const elements = [];
+    let lastDate = null;
+
+    for (let i = 0; i < roots.length; i++) {
+      const m = roots[i];
+      const currentDate = getMessageDate(m.created_at);
+
+      if (currentDate !== lastDate) {
+        elements.push(
+          <div key={`date-${currentDate}`} className="flex items-center justify-center my-4">
+            <div className="bg-gray-700 text-white text-xs px-3 py-1 rounded-full">
+              {formatDate(m.created_at)}
+            </div>
+          </div>
+        );
+        lastDate = currentDate;
+      }
+
+      elements.push(renderMessage(m, i));
+    }
+
+    return elements;
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="overflow-y-auto p-4 space-y-4">
-        {roots.map((m, i) => renderMessage(m, 0, i))}
+        {renderMessagesWithDates()}
         <div ref={endRef} />
       </div>
 
