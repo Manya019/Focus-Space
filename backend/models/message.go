@@ -14,7 +14,7 @@ type Message struct {
 }
 
 type WSMessage struct {
-	Type      string      `json:"type"`    // "chat", "presence", "join", "leave"
+	Type      string      `json:"type"`    // "chat", "presence", "join", "leave", "signal"
 	Channel   string      `json:"channel"` // "reading_room", "general"
 	Payload   interface{} `json:"payload,omitempty"`
 	User      *WSUser     `json:"user,omitempty"`
@@ -22,6 +22,7 @@ type WSMessage struct {
 	ReplyToID *int64      `json:"reply_to_id,omitempty"`
 	Body      string      `json:"body,omitempty"`
 	CreatedAt time.Time   `json:"created_at,omitempty"`
+	TargetID  int64       `json:"target_id,omitempty"` // For private signaling (WebRTC)
 }
 
 type WSUser struct {

@@ -251,6 +251,45 @@ func serveWs(hub *Hub, c *gin.Context) {
 					}
 				}
 				hub.broadcastPresence()
+
+			case "signal":
+				// Forward signaling messages (offer, answer, candidate) to the specific target
+				if wsMsg.TargetID != 0 {
+					hub.mu.RLock()
+					var target *Client
+					for c := range hub.clients {
+						if c.UserID == wsMsg.TargetID {
+							target = c
+							break
+						}
+					}
+					hub.mu.RUnlock()
+
+					if target != nil {
+						// Ensure the Sender ID is attached so the recipient knows who sent it
+						wsMsg.User = &models.WSUser{
+							ID:       client.UserID,
+							Username: client.Username,
+							Email:    client.Email,
+						}
+
+						msg, _ := json.Marshal(wsMsg)
+						select {
+						case target.Send <- msg:
+						default:
+							// If target buffer is full, we might drop it or handle error
+						}
+					}
+				} else {
+					// No target, broadcast to channel (discovery)
+					wsMsg.User = &models.WSUser{
+						ID:       client.UserID,
+						Username: client.Username,
+						Email:    client.Email,
+					}
+					msg, _ := json.Marshal(wsMsg)
+					hub.broadcast <- msg
+				}
 			}
 		}
 	}()

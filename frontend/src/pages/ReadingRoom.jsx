@@ -5,10 +5,12 @@ import ChatBox from "../components/ChatBox";
 import ChatLogo from "../components/ChatLogo";
 import ShuffleLogo from "../components/ShuffleLogo";
 import FullScreenLogo from "../components/FullScreenLogo";
+import VideoLogo from "../components/VideoLogo";
 import PomodoroTimer from "../components/PomodoroTimer";
 import { fetchLogs, createLog, getProfile } from '../services/api';
 import { connectWs, joinChannel, sendMessage, sendDelete, updatePresence } from '../services/ws';
 import { useSessionDraft } from '../state/session';
+import VideoMeeting from '../components/VideoMeeting';
 
 const backgroundModules = import.meta.glob(
   "../assets/images/*.{jpg,jpeg,png}",
@@ -28,6 +30,8 @@ export default function ReadingRoom({ user }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [bottomMessageText, setBottomMessageText] = useState('');
+  const [incomingSignal, setIncomingSignal] = useState(null);
+  const [showVideo, setShowVideo] = useState(false);
 
   const draft = useSessionDraft();
 
@@ -44,7 +48,7 @@ export default function ReadingRoom({ user }) {
 
 
   // State for background
-  const [currentBg, setCurrentBg] = useState(0); 
+  const [currentBg, setCurrentBg] = useState(0);
 
   // State for full screen
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -119,6 +123,7 @@ export default function ReadingRoom({ user }) {
 
       if (msg.type === 'presence') setPresence(msg.payload || []);
       if (msg.type === 'mood') setMood(msg.payload);
+      if (msg.type === 'signal') setIncomingSignal(msg);
     });
 
     joinChannel('reading_room');
@@ -183,15 +188,15 @@ export default function ReadingRoom({ user }) {
     setLogs(sortedLogs);
   };
 
-const sendBottomMessage = () => {
-  if (!bottomMessageText.trim()) return;
-  sendMessage("reading_room", {
-    body: bottomMessageText,
-  });
-  setBottomMessageText('');
-};
+  const sendBottomMessage = () => {
+    if (!bottomMessageText.trim()) return;
+    sendMessage("reading_room", {
+      body: bottomMessageText,
+    });
+    setBottomMessageText('');
+  };
 
-// Drag handlers
+  // Drag handlers
   const handleMouseDown = (e) => {
     setIsDragging(true);
     setDragStart({ x: e.clientX, y: e.clientY });
@@ -249,10 +254,10 @@ const sendBottomMessage = () => {
   useEffect(() => {
     const centerBox = () => {
       const boxWidth = 320; // w-80
-      const boxHeight = isMinimized ? 48 : 384; 
+      const boxHeight = isMinimized ? 48 : 384;
       setPosition({
         x: Math.max(0, (window.innerWidth - boxWidth) / 2),
-        y: Math.max(0, (window.innerHeight - boxHeight) / 2 + 120), 
+        y: Math.max(0, (window.innerHeight - boxHeight) / 2 + 120),
       });
     };
     centerBox();
@@ -274,6 +279,7 @@ const sendBottomMessage = () => {
         </div>
         <div className="flex gap-2">
           <FullScreenLogo onClick={toggleFullScreen} />
+          <VideoLogo onClick={() => setShowVideo(true)} />
           <ShuffleLogo
             onClick={() =>
               setCurrentBg((i) => (i + 1) % backgrounds.length)
@@ -353,6 +359,15 @@ const sendBottomMessage = () => {
           onLogsUpdate={handleLogUpdate}
         />
       </div>
+
+      {/* Video Meeting Component */}
+      {showVideo && (
+        <VideoMeeting
+          user={safeUser}
+          incomingSignal={incomingSignal}
+          onClose={() => setShowVideo(false)}
+        />
+      )}
     </div>
   );
 }
