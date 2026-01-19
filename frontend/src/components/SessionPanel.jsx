@@ -117,7 +117,7 @@ export default function SessionPanel({ draft, onSubmit, isMinimized, onMinimize,
                             onChange={(e) => setEditForm({ ...editForm, pages_read: e.target.value })}
                           />
                           <input
-                            className="flex-1 bg-white/10 border border-white/15 rounded px-2 py-1 text-xs"
+                            className="w-full flex-1 bg-white/10 border border-white/15 rounded px-2 py-1 text-xs"
                             placeholder="Target pages"
                             type="number"
                             value={editForm.target_pages}

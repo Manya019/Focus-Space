@@ -18,14 +18,15 @@ import (
 )
 
 type Client struct {
-	Conn        *websocket.Conn
-	Send        chan []byte
-	UserID      int64
-	Username    string
-	Email       string
-	Book        string
-	TargetPages int
-	Channels    map[string]bool
+	Conn            *websocket.Conn
+	Send            chan []byte
+	UserID          int64
+	Username        string
+	Email           string
+	Book            string
+	TargetPages     int
+	Channels        map[string]bool
+	LastJoinAttempt time.Time
 }
 
 type Hub struct {
@@ -253,6 +254,18 @@ func serveWs(hub *Hub, c *gin.Context) {
 				hub.broadcastPresence()
 
 			case "signal":
+				// Rate limit join_request (OTP/Meeting Code entry)
+				if payload, ok := wsMsg.Payload.(map[string]interface{}); ok {
+					if sigType, ok := payload["signalType"].(string); ok && sigType == "join_request" {
+						if time.Since(client.LastJoinAttempt) < 2*time.Second {
+							// Rate limited
+							log.Printf("Rate limit hit for user %d", client.UserID)
+							continue
+						}
+						client.LastJoinAttempt = time.Now()
+					}
+				}
+
 				// Forward signaling messages (offer, answer, candidate) to the specific target
 				if wsMsg.TargetID != 0 {
 					hub.mu.RLock()

@@ -138,31 +138,34 @@ export function joinChannel(channel) {
   );
 }
 
-export function sendMessage(channel, body) {
+export function sendMessage(channel, bodyOrMsg) {
   if (!channel) return;
 
-  // Allow `sendMessage(channel, { body, id, reply_to_id, created_at })` for threaded chat.
-  let msgBody = body;
-  let id;
-  let reply_to_id;
-  let created_at;
-  if (typeof body === 'object' && body !== null) {
-    msgBody = body.body;
-    id = body.id;
-    reply_to_id = body.reply_to_id;
-    created_at = body.created_at;
+  // Flexible implementation
+  // If bodyOrMsg is an object with a 'type' field, use it as the full message
+  // Otherwise treat as chat body
+
+  let msg = {
+    type: 'chat',
+    channel,
+    body: '',
+  };
+
+  if (typeof bodyOrMsg === 'object' && bodyOrMsg !== null && bodyOrMsg.type) {
+    // Advanced usage: passing full message object
+    msg = { ...msg, ...bodyOrMsg };
+  } else if (typeof bodyOrMsg === 'object' && bodyOrMsg !== null) {
+    // Legacy support for chat with extra fields
+    msg.body = bodyOrMsg.body || '';
+    if (bodyOrMsg.id) msg.id = bodyOrMsg.id;
+    if (bodyOrMsg.reply_to_id) msg.reply_to_id = bodyOrMsg.reply_to_id;
+    if (bodyOrMsg.created_at) msg.created_at = bodyOrMsg.created_at;
+  } else {
+    // Simple string message
+    msg.body = bodyOrMsg;
   }
 
-  ensureOpenSend(
-    JSON.stringify({
-      type: 'chat',
-      channel,
-      body: msgBody,
-      id,
-      reply_to_id,
-      created_at,
-    })
-  );
+  ensureOpenSend(JSON.stringify(msg));
 }
 
 export function sendDelete(channel, id) {
