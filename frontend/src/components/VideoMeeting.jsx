@@ -44,7 +44,16 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
 
     useEffect(() => {
         localStreamRef.current = localStream;
+        if (localVideoRef.current && localStream) {
+            localVideoRef.current.srcObject = localStream;
+        }
     }, [localStream]);
+
+    useEffect(() => {
+        if (localVideoRef.current && localStream) {
+            localVideoRef.current.srcObject = localStream;
+        }
+    }, [isInMeeting, waitingForApproval, pinnedUserId, localStream]);
 
     const generateCode = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
