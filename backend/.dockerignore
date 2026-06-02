@@ -1,0 +1,7 @@
+.env
+*.log
+*.exe
+*.exe~
+scratch/
+vendor/
+.git/
