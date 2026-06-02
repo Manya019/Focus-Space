@@ -13,9 +13,12 @@ import (
 )
 
 func main() {
+	// Set Gin to Release Mode for silence
+	gin.SetMode(gin.ReleaseMode)
+
 	// Load .env file
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using environment variables")
+		// log.Println("No .env file found, using environment variables")
 	}
 
 	if err := db.ConnectDB(); err != nil {

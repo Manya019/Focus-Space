@@ -11,18 +11,17 @@ import (
 func getJWTSecret() []byte {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		secret = "super-secret-change-me" // fallback, but should be set in production
+		secret = "super-secret-change-me"
 	}
 	return []byte(secret)
 }
 
 type Claims struct {
-	UserID int64 `json:"user_id"`
+	UserID string `json:"user_id"`
 	jwt.RegisteredClaims
 }
 
-// GenerateToken returns a signed JWT for the given user.
-func GenerateToken(userID int64) (string, error) {
+func GenerateToken(userID string) (string, error) {
 	claims := &Claims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -35,8 +34,9 @@ func GenerateToken(userID int64) (string, error) {
 	return token.SignedString(getJWTSecret())
 }
 
-// ParseToken validates the token and returns the claims.
 func ParseToken(tokenStr string) (*Claims, error) {
+	// Note: For Clerk integration, this would normally involve fetching JWKS from Clerk.
+	// For now, we are keeping the structure but updating UserID to string.
 	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		return getJWTSecret(), nil
 	})

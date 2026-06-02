@@ -20,7 +20,7 @@ import (
 type Client struct {
 	Conn            *websocket.Conn
 	Send            chan []byte
-	UserID          int64
+	UserID          string
 	Username        string
 	Email           string
 	Book            string
@@ -37,6 +37,7 @@ type Hub struct {
 	mu           sync.RWMutex
 	currentMood  string
 	lastActivity time.Time
+	roomPages    int
 }
 
 func NewHub() *Hub {
@@ -47,10 +48,9 @@ func NewHub() *Hub {
 		broadcast:    make(chan []byte),
 		currentMood:  "idle",
 		lastActivity: time.Now(),
+		roomPages:    0,
 	}
 }
-
-//Hub loop
 
 func (h *Hub) run() {
 	ticker := time.NewTicker(10 * time.Second)
@@ -66,7 +66,7 @@ func (h *Hub) run() {
 			h.clients[client] = true
 			h.mu.Unlock()
 			h.markActivity()
-			log.Printf("hub: registered user=%d username=%q", client.UserID, client.Username)
+			// log.Printf("hub: registered user=%s username=%q", client.UserID, client.Username)
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -75,7 +75,7 @@ func (h *Hub) run() {
 				close(client.Send)
 			}
 			h.mu.Unlock()
-			log.Printf("hub: unregistered user=%d username=%q", client.UserID, client.Username)
+			// log.Printf("hub: unregistered user=%s username=%q", client.UserID, client.Username)
 
 		case message := <-h.broadcast:
 			var wsMsg models.WSMessage
@@ -84,8 +84,18 @@ func (h *Hub) run() {
 				continue
 			}
 
-			if wsMsg.Type == "chat" || wsMsg.Type == "presence_update" {
+			if wsMsg.Type == "chat" || wsMsg.Type == "presence_update" || wsMsg.Type == "log_added" {
 				h.markActivity()
+			}
+
+			if wsMsg.Type == "log_added" {
+				if pages, ok := wsMsg.Payload.(float64); ok {
+					h.mu.Lock()
+					h.roomPages += int(pages)
+					h.mu.Unlock()
+					h.broadcastRoomStats()
+				}
+				continue
 			}
 
 			h.mu.RLock()
@@ -111,27 +121,20 @@ func (h *Hub) run() {
 	}
 }
 
-//WebSocket upgrader
-
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
 		frontend := os.Getenv("FRONTEND_URL")
 
-		// Allow localhost for development
 		if origin == "http://localhost:5173" {
 			return true
 		}
 
-		// Allow configured frontend URL
 		if frontend != "" && origin == frontend {
 			return true
 		}
 
-		// In production, allow common frontend origins if FRONTEND_URL is not set
-		// This is more permissive for production deployments
 		if frontend == "" {
-			// Allow HTTPS origins that are likely frontend deployments
 			return origin != "" && (strings.HasPrefix(origin, "https://") ||
 				strings.HasPrefix(origin, "http://localhost"))
 		}
@@ -140,16 +143,13 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-//WebSocket handler
-
 func serveWs(hub *Hub, c *gin.Context) {
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Println("ws upgrade error:", err)
 		return
 	}
 
-	userID := int64(0)
+	userID := ""
 	username := ""
 	email := ""
 
@@ -158,6 +158,11 @@ func serveWs(hub *Hub, c *gin.Context) {
 		claims, err := utils.ParseToken(token)
 		if err == nil {
 			userID = claims.UserID
+		} else {
+			userID = token 
+		}
+
+		if userID != "" {
 			var u models.User
 			err := db.DB.
 				QueryRow(`SELECT username, email FROM users WHERE id=$1`, userID).
@@ -204,15 +209,12 @@ func serveWs(hub *Hub, c *gin.Context) {
 				hub.broadcastPresence()
 
 			case "chat":
-				// Clients currently send chat text as either `body` or `payload`.
-				// Normalize to `body` so the frontend can render it reliably.
 				if wsMsg.Body == "" {
 					if s, ok := wsMsg.Payload.(string); ok {
 						wsMsg.Body = s
 					}
 				}
 				if wsMsg.ID == 0 {
-					// reading_room messages are not persisted; generate a stable ID for threading/deletes.
 					wsMsg.ID = time.Now().UnixNano()
 				}
 				if wsMsg.CreatedAt.IsZero() {
@@ -227,7 +229,6 @@ func serveWs(hub *Hub, c *gin.Context) {
 				hub.broadcast <- msg
 
 			case "delete":
-				// For #general we expect the REST API to enforce ownership; this event is for realtime UI updates.
 				if wsMsg.ID == 0 {
 					continue
 				}
@@ -254,20 +255,17 @@ func serveWs(hub *Hub, c *gin.Context) {
 				hub.broadcastPresence()
 
 			case "signal":
-				// Rate limit join_request (OTP/Meeting Code entry)
 				if payload, ok := wsMsg.Payload.(map[string]interface{}); ok {
 					if sigType, ok := payload["signalType"].(string); ok && sigType == "join_request" {
 						if time.Since(client.LastJoinAttempt) < 2*time.Second {
-							// Rate limited
-							log.Printf("Rate limit hit for user %d", client.UserID)
+							log.Printf("Rate limit hit for user %s", client.UserID)
 							continue
 						}
 						client.LastJoinAttempt = time.Now()
 					}
 				}
 
-				// Forward signaling messages (offer, answer, candidate) to the specific target
-				if wsMsg.TargetID != 0 {
+				if wsMsg.TargetID != "" {
 					hub.mu.RLock()
 					var target *Client
 					for c := range hub.clients {
@@ -279,7 +277,6 @@ func serveWs(hub *Hub, c *gin.Context) {
 					hub.mu.RUnlock()
 
 					if target != nil {
-						// Ensure the Sender ID is attached so the recipient knows who sent it
 						wsMsg.User = &models.WSUser{
 							ID:       client.UserID,
 							Username: client.Username,
@@ -290,11 +287,9 @@ func serveWs(hub *Hub, c *gin.Context) {
 						select {
 						case target.Send <- msg:
 						default:
-							// If target buffer is full, we might drop it or handle error
 						}
 					}
 				} else {
-					// No target, broadcast to channel (discovery)
 					wsMsg.User = &models.WSUser{
 						ID:       client.UserID,
 						Username: client.Username,
@@ -320,7 +315,7 @@ func (h *Hub) broadcastPresence() {
 	h.mu.RLock()
 	var presence []models.WSUser
 	for c := range h.clients {
-		if c.Channels["reading_room"] && c.UserID > 0 {
+		if c.Channels["reading_room"] && c.UserID != "" {
 			presence = append(presence, models.WSUser{
 				ID:          c.UserID,
 				Username:    c.Username,
@@ -395,4 +390,29 @@ func (h *Hub) updateMood() {
 			}
 		}
 	}
+}
+
+func (h *Hub) broadcastRoomStats() {
+	h.mu.RLock()
+	total := h.roomPages
+	h.mu.RUnlock()
+
+	msg, _ := json.Marshal(models.WSMessage{
+		Type:    "room_stats",
+		Channel: "reading_room",
+		Payload: map[string]interface{}{
+			"total_pages": total,
+		},
+	})
+
+	h.mu.RLock()
+	for c := range h.clients {
+		if c.Channels["reading_room"] {
+			select {
+			case c.Send <- msg:
+			default:
+			}
+		}
+	}
+	h.mu.RUnlock()
 }

@@ -3,7 +3,6 @@ package db
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"os"
 
 	_ "github.com/lib/pq"
@@ -37,7 +36,7 @@ func ConnectDB() error {
 		return err
 	}
 
-	log.Println("connected to postgres")
+	// log.Println("connected to postgres")
 	return nil
 }
 

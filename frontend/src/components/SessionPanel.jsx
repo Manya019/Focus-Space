@@ -1,9 +1,36 @@
 import React, { useState } from 'react';
 import { updateLog, deleteLog } from '../services/api';
+import { Minus, Plus, Book, Target, Check, X, Edit2, Trash2, Search, Loader2 } from 'lucide-react';
+import { cn } from '../lib/utils';
+import { searchBooks } from '../services/books';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function SessionPanel({ draft, onSubmit, isMinimized, onMinimize, logs, user, onLogsUpdate }) {
   const [editingLog, setEditingLog] = useState(null);
   const [editForm, setEditForm] = useState({ book_name: '', pages_read: '', target_pages: '', reflection: '' });
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+
+  const handleSearch = async (query) => {
+    draft.setBook(query);
+    if (query.length > 2) {
+      setIsSearching(true);
+      const results = await searchBooks(query);
+      setSearchResults(results);
+      setIsSearching(false);
+      setShowResults(true);
+    } else {
+      setSearchResults([]);
+      setShowResults(false);
+    }
+  };
+
+  const selectBook = (book) => {
+    draft.setBook(book.title);
+    if (book.pageCount) draft.setTargetPages(book.pageCount);
+    setShowResults(false);
+  };
 
   const handleEdit = (log) => {
     setEditingLog(log.id);
@@ -53,126 +80,152 @@ export default function SessionPanel({ draft, onSubmit, isMinimized, onMinimize,
   };
 
   return (
-    <div className="panel backdrop-blur-2xl bg-white/20 border border-white/25 rounded-2xl shadow-2xl transition-all duration-300 ease-in-out">
-      <div className="flex justify-between items-center mb-3">
-        <h4 className="text-sm font-semibold text-white/90">Reading session</h4>
+    <div className="glass-panel rounded-3xl overflow-hidden shadow-2xl border border-white/10 w-full">
+      {/* Header */}
+      <div className="p-4 bg-white/5 flex justify-between items-center border-b border-white/5">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded bg-accent/20 flex items-center justify-center">
+            <Book size={12} className="text-accent" />
+          </div>
+          <h4 className="text-xs font-bold text-gray-200 uppercase tracking-wider">Session</h4>
+        </div>
         <button
           onClick={onMinimize}
-          className="text-white/70 hover:text-white text-lg leading-none"
+          className="p-1.5 rounded-lg hover:bg-white/10 text-muted transition-colors"
         >
-          {isMinimized ? '+' : '−'}
+          {isMinimized ? <Plus size={16} /> : <Minus size={16} />}
         </button>
       </div>
-      {!isMinimized && (
-        <div className="max-h-96 overflow-y-auto">
-          <div className="grid gap-3">
-            <input
-              className="backdrop-blur-lg bg-white/10 border border-white/15 rounded-xl px-3 py-2 text-sm transition-all duration-200 ease-in-out hover:bg-white/15 focus:bg-white/15 focus:border-white/35"
-              placeholder="Book"
-              value={draft.book}
-              onChange={(e) => draft.setBook(e.target.value)}
-            />
-            <input
-              className="backdrop-blur-lg bg-white/10 border border-white/15 rounded-xl px-3 py-2 text-sm transition-all duration-200 ease-in-out hover:bg-white/15 focus:bg-white/15 focus:border-white/35"
-              placeholder="Target pages"
-              type="number"
-              value={draft.targetPages}
-              onChange={(e) => draft.setTargetPages(e.target.value)}
-            />
-            <input
-              className="backdrop-blur-lg bg-white/10 border border-white/15 rounded-xl px-3 py-2 text-sm transition-all duration-200 ease-in-out hover:bg-white/15 focus:bg-white/15 focus:border-white/35"
-              placeholder="Pages read"
-              type="number"
-              value={draft.pages}
-              onChange={(e) => draft.setPages(e.target.value)}
-            />
+
+      <AnimatePresence initial={false}>
+        {!isMinimized && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <div className="p-5 space-y-4 max-h-[450px] overflow-y-auto scrollbar-hide">
+          <div className="space-y-3">
+            <div className="relative group/search">
+              <input
+                className="w-full bg-white/5 border border-white/5 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:bg-white/10 focus:border-accent/50 outline-none transition-all placeholder:text-muted/50"
+                placeholder="Search book title..."
+                value={draft.book}
+                onChange={(e) => handleSearch(e.target.value)}
+                onFocus={() => searchResults.length > 0 && setShowResults(true)}
+              />
+              <div className="absolute left-3 top-3 text-muted/50 group-focus-within/search:text-accent transition-colors">
+                {isSearching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+              </div>
+
+              {showResults && searchResults.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-[#0f172a] border border-white/10 rounded-2xl shadow-2xl z-[60] overflow-hidden max-h-60 overflow-y-auto">
+                  {searchResults.map((book) => (
+                    <button
+                      key={book.id}
+                      onClick={() => selectBook(book)}
+                      className="w-full p-3 flex gap-3 hover:bg-white/5 transition-colors text-left border-b border-white/5 last:border-0"
+                    >
+                      {book.cover && <img src={book.cover} className="w-8 h-12 rounded object-cover" alt="" />}
+                      <div className="flex flex-col overflow-hidden">
+                        <span className="text-xs font-bold text-white truncate">{book.title}</span>
+                        <span className="text-[10px] text-muted truncate">{book.author}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-muted uppercase ml-1">Target</label>
+                <input
+                  className="w-full bg-white/5 border border-white/5 rounded-xl px-4 py-2 text-sm focus:bg-white/10 focus:border-accent/50 outline-none transition-all"
+                  type="number"
+                  value={draft.targetPages}
+                  onChange={(e) => draft.setTargetPages(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-muted uppercase ml-1">Read</label>
+                <input
+                  className="w-full bg-white/5 border border-white/5 rounded-xl px-4 py-2 text-sm focus:bg-white/10 focus:border-accent/50 outline-none transition-all"
+                  type="number"
+                  value={draft.pages}
+                  onChange={(e) => draft.setPages(e.target.value)}
+                />
+              </div>
+            </div>
+
             <textarea
-              className="backdrop-blur-lg bg-white/10 border border-white/15 rounded-xl px-3 py-2 text-sm resize-none transition-all duration-200 ease-in-out hover:bg-white/15 focus:bg-white/15 focus:border-white/35"
-              placeholder="Notes"
+              className="w-full bg-white/5 border border-white/5 rounded-xl px-4 py-2.5 text-sm h-20 resize-none focus:bg-white/10 focus:border-accent/50 outline-none transition-all placeholder:text-muted/50"
+              placeholder="Any reflections..."
               value={draft.notes}
               onChange={(e) => draft.setNotes(e.target.value)}
             />
-            <button className="backdrop-blur-lg bg-white/15 border border-white/25 rounded-xl px-3 py-2 text-sm font-medium shadow-lg transition-all duration-200 ease-in-out hover:bg-white/25 hover:shadow-xl hover:scale-105" onClick={onSubmit}>Submit log</button>
+
+            <button 
+              className="w-full py-3 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-bold shadow-lg shadow-accent/20 transition-all active:scale-[0.98]" 
+              onClick={onSubmit}
+            >
+              Log Session
+            </button>
           </div>
+
           {logs && logs.length > 0 && (
-            <div className="mt-4">
-              <h5 className="text-sm font-semibold mb-2 text-white/90">Session History</h5>
-              <div className="space-y-2">
-                {logs.slice(0, 10).map((log, index) => (
-                  <div key={log.id || index} className="backdrop-blur-lg bg-white/10 border border-white/15 rounded-lg p-2 text-xs">
+            <div className="pt-4 border-t border-white/5">
+              <h5 className="text-[10px] font-black text-muted uppercase tracking-[0.2em] mb-4">Recent Sessions</h5>
+              <div className="space-y-3">
+                {logs.slice(0, 5).map((log, index) => (
+                  <div key={log.id || index} className="p-3 rounded-2xl bg-white/5 border border-white/5 group hover:bg-white/[0.08] transition-all">
                     {editingLog === log.id ? (
                       <div className="space-y-2">
                         <input
-                          className="w-full bg-white/10 border border-white/15 rounded px-2 py-1 text-xs"
-                          placeholder="Book name"
+                          className="w-full bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs"
                           value={editForm.book_name}
                           onChange={(e) => setEditForm({ ...editForm, book_name: e.target.value })}
                         />
                         <div className="flex gap-2">
-                          <input
-                            className="flex-1 bg-white/10 border border-white/15 rounded px-2 py-1 text-xs"
-                            placeholder="Pages read"
-                            type="number"
-                            value={editForm.pages_read}
-                            onChange={(e) => setEditForm({ ...editForm, pages_read: e.target.value })}
-                          />
-                          <input
-                            className="w-full flex-1 bg-white/10 border border-white/15 rounded px-2 py-1 text-xs"
-                            placeholder="Target pages"
-                            type="number"
-                            value={editForm.target_pages}
-                            onChange={(e) => setEditForm({ ...editForm, target_pages: e.target.value })}
-                          />
-                        </div>
-                        <textarea
-                          className="w-full bg-white/10 border border-white/15 rounded px-2 py-1 text-xs resize-none"
-                          placeholder="Reflection"
-                          value={editForm.reflection}
-                          onChange={(e) => setEditForm({ ...editForm, reflection: e.target.value })}
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
-                            onClick={handleSaveEdit}
-                          >
-                            Save
+                          <button onClick={handleSaveEdit} className="p-1 rounded bg-green-500/20 text-green-500 hover:bg-green-500/30">
+                            <Check size={14} />
                           </button>
-                          <button
-                            className="px-2 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700"
-                            onClick={handleCancelEdit}
-                          >
-                            Cancel
+                          <button onClick={handleCancelEdit} className="p-1 rounded bg-red-500/20 text-red-500 hover:bg-red-500/30">
+                            <X size={14} />
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <>
-                        <div className="font-medium">{log.book_name}</div>
-                        <div className="text-white/70">Pages: {log.pages_read}/{log.target_pages}</div>
-                        {log.reflection && <div className="text-white/70 mt-1">{log.reflection}</div>}
-                        <div className="flex gap-2 mt-2">
-                          <button
-                            className="text-xs text-blue-400 hover:text-blue-300"
-                            onClick={() => handleEdit(log)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="text-xs text-red-400 hover:text-red-300"
-                            onClick={() => handleDelete(log.id)}
-                          >
-                            Delete
-                          </button>
+                      <div className="relative">
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-xs font-bold text-gray-200 truncate pr-8">{log.book_name}</span>
+                          <div className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                            <button onClick={() => handleEdit(log)} className="p-1 text-muted hover:text-white transition-colors">
+                              <Edit2 size={12} />
+                            </button>
+                            <button onClick={() => handleDelete(log.id)} className="p-1 text-muted hover:text-red-400 transition-colors">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
                         </div>
-                      </>
+                        <div className="flex items-center gap-2 text-[10px] text-muted">
+                          <span className="flex items-center gap-1"><Check size={10} className="text-accent" /> {log.pages_read} pages</span>
+                          <span>•</span>
+                          <span>{new Date(log.created_at).toLocaleDateString()}</span>
+                        </div>
+                      </div>
                     )}
                   </div>
                 ))}
               </div>
             </div>
           )}
-        </div>
-      )}
+          </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

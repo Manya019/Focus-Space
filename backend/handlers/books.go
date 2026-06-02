@@ -22,7 +22,7 @@ type createBookRequest struct {
 
 type createReviewRequest struct {
 	BookID     int    `json:"book_id" binding:"required"`
-	UserID     int    `json:"user_id" binding:"required"`
+	UserID     string `json:"user_id" binding:"required"`
 	Rating     int    `json:"rating" binding:"required,min=1,max=5"`
 	ReviewText string `json:"review_text" binding:"required"`
 }
@@ -35,8 +35,9 @@ func GetBooks(c *gin.Context) {
 	var err error
 
 	if search != "" {
-		query += ` WHERE title ILIKE $1 OR author ILIKE $1 ORDER BY created_at DESC`
-		rows, err = db.DB.Query(query, "%"+search+"%")
+		query += ` WHERE title ILIKE $1 OR author ILIKE $2 ORDER BY created_at DESC`
+		s := "%" + search + "%"
+		rows, err = db.DB.Query(query, s, s)
 	} else {
 		query += ` ORDER BY created_at DESC`
 		rows, err = db.DB.Query(query)
@@ -91,12 +92,14 @@ func GetReviews(c *gin.Context) {
 		return
 	}
 
-	rows, err := db.DB.Query(`
+	query := `
 		SELECT r.id, r.book_id, r.user_id, r.rating, r.review_text, r.created_at, u.username
 		FROM reviews r
 		JOIN users u ON r.user_id = u.id
-		WHERE r.book_id = $1 ORDER BY r.created_at DESC`, bookID)
+		WHERE r.book_id = $1 ORDER BY r.created_at DESC`
+	rows, err := db.DB.Query(query, bookID)
 	if err != nil {
+		log.Printf("GetReviews query failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed"})
 		return
 	}
@@ -117,19 +120,18 @@ func GetReviews(c *gin.Context) {
 
 // GetUserReviews handles GET /users/:id/reviews
 func GetUserReviews(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
+	userID := c.Param("id")
+	if userID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
 		return
 	}
 
-	rows, err := db.DB.Query(`
-		SELECT r.id, r.book_id, r.user_id, r.rating, r.review_text, r.created_at, b.title, b.author
-		FROM reviews r
-		JOIN books b ON r.book_id = b.id
-		WHERE r.user_id = $1 ORDER BY r.created_at DESC`, userID)
+	q := "SELECT r.id, r.book_id, r.user_id, r.rating, r.review_text, r.created_at, b.title, b.author " +
+		"FROM reviews r JOIN books b ON r.book_id = b.id " +
+		"WHERE r.user_id = $1 ORDER BY r.created_at DESC"
+	rows, err := db.DB.Query(q, userID)
 	if err != nil {
-		log.Printf("GetUserReviews query failed user_id=%d: %v", userID, err)
+		log.Printf("GetUserReviews query failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed", "details": err.Error()})
 		return
 	}
@@ -138,7 +140,7 @@ func GetUserReviews(c *gin.Context) {
 	type UserReview struct {
 		ID         int       `json:"id"`
 		BookID     int       `json:"book_id"`
-		UserID     int       `json:"user_id"`
+		UserID     string    `json:"user_id"`
 		Rating     int       `json:"rating"`
 		ReviewText string    `json:"review_text"`
 		CreatedAt  time.Time `json:"created_at"`
@@ -164,6 +166,12 @@ func CreateReview(c *gin.Context) {
 	var req createReviewRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Auto-sync user if not exists
+	if err := ensureUser(req.UserID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "user sync failed", "details": err.Error()})
 		return
 	}
 

@@ -13,7 +13,7 @@ type Book struct {
 type Review struct {
 	ID         int       `json:"id"`
 	BookID     int       `json:"book_id"`
-	UserID     int       `json:"user_id"`
+	UserID     string    `json:"user_id"`
 	Rating     int       `json:"rating"`
 	ReviewText string    `json:"review_text"`
 	CreatedAt  time.Time `json:"created_at"`

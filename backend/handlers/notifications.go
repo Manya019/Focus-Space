@@ -3,7 +3,6 @@ package handlers
 import (
 	"database/sql"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 
@@ -12,21 +11,21 @@ import (
 )
 
 type notificationPrefRequest struct {
-	UserID     int64  `json:"user_id" binding:"required"`
+	UserID     string `json:"user_id" binding:"required"`
 	Enabled    bool   `json:"enabled"`
 	NotifyTime string `json:"notify_time"`
 }
 
 // GetNotifications handles GET /notifications/:user_id
 func GetNotifications(c *gin.Context) {
-	uid, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
-	if err != nil {
+	uid := c.Param("user_id")
+	if uid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
 		return
 	}
 
 	var n models.Notification
-	err = db.DB.QueryRow(`
+	err := db.DB.QueryRow(`
 		SELECT user_id, enabled, notify_time FROM user_notifications WHERE user_id=$1`,
 		uid).Scan(&n.UserID, &n.Enabled, &n.NotifyTime)
 	if err == sql.ErrNoRows {
@@ -64,14 +63,14 @@ func SetNotificationPrefs(c *gin.Context) {
 
 // UnsubscribeNotifications handles GET /notifications/unsubscribe/:user_id
 func UnsubscribeNotifications(c *gin.Context) {
-	uid, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
-	if err != nil {
+	uid := c.Param("user_id")
+	if uid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
 		return
 	}
 
 	// Disable notifications for this user
-	_, err = db.DB.Exec(`
+	_, err := db.DB.Exec(`
 		INSERT INTO user_notifications (user_id, enabled, notify_time)
 		VALUES ($1, false, '09:00')
 		ON CONFLICT (user_id) DO UPDATE SET enabled = false
@@ -82,7 +81,6 @@ func UnsubscribeNotifications(c *gin.Context) {
 		return
 	}
 
-	// Return a simple HTML page confirming unsubscription
 	c.Header("Content-Type", "text/html")
 	c.String(http.StatusOK, `
 		<!DOCTYPE html>
@@ -90,8 +88,8 @@ func UnsubscribeNotifications(c *gin.Context) {
 		<head>
 			<title>Unsubscribed</title>
 			<style>
-				body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-				.success { color: green; }
+				body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #020617; color: white; }
+				.success { color: #6366f1; }
 			</style>
 		</head>
 		<body>

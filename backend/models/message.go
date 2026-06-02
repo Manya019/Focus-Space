@@ -4,7 +4,7 @@ import "time"
 
 type Message struct {
 	ID        int64     `json:"id" db:"id"`
-	UserID    int64     `json:"user_id" db:"user_id"`
+	UserID    string    `json:"user_id" db:"user_id"`
 	Channel   string    `json:"channel" db:"channel"`
 	Body      string    `json:"body" db:"body"`
 	ReplyToID *int64    `json:"reply_to_id,omitempty" db:"reply_to_id"`
@@ -22,11 +22,11 @@ type WSMessage struct {
 	ReplyToID *int64      `json:"reply_to_id,omitempty"`
 	Body      string      `json:"body,omitempty"`
 	CreatedAt time.Time   `json:"created_at,omitempty"`
-	TargetID  int64       `json:"target_id,omitempty"` // For private signaling (WebRTC)
+	TargetID  string      `json:"target_id,omitempty"` // For private signaling (WebRTC)
 }
 
 type WSUser struct {
-	ID          int64  `json:"id"`
+	ID          string `json:"id"`
 	Username    string `json:"username"`
 	Email       string `json:"email"`
 	Book        string `json:"book,omitempty"`

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 
@@ -11,11 +10,12 @@ import (
 )
 
 type createLogRequest struct {
-	UserID      int64  `json:"user_id" binding:"required"`
+	UserID      string `json:"user_id" binding:"required"`
 	BookName    string `json:"book_name" binding:"required"`
 	PagesRead   int    `json:"pages_read" binding:"required"`
-	TargetPages int    `json:"target_pages"`
-	Reflection  string `json:"reflection"`
+	TargetPages     int    `json:"target_pages"`
+	Reflection      string `json:"reflection"`
+	DurationMinutes int    `json:"duration_minutes"`
 }
 
 // CreateLog handles POST /logs
@@ -26,22 +26,53 @@ func CreateLog(c *gin.Context) {
 		return
 	}
 
-	_, err := db.DB.Exec(`
-		INSERT INTO reading_logs (user_id, book_name, pages_read, target_pages, reflection, created_at)
-		VALUES ($1, $2, $3, $4, $5, NOW())`,
-		req.UserID, req.BookName, req.PagesRead, req.TargetPages, req.Reflection)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save log"})
+	// Auto-sync user if not exists
+	if err := ensureUser(req.UserID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "user sync failed", "details": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "logged"})
+	_, err := db.DB.Exec(`
+		INSERT INTO reading_logs (user_id, book_name, pages_read, target_pages, reflection, duration_minutes, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+		req.UserID, req.BookName, req.PagesRead, req.TargetPages, req.Reflection, req.DurationMinutes)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save log", "details": err.Error()})
+		return
+	}
+
+	// Calculate XP: 100 XP per 10 mins + 10 XP per page
+	xpEarned := (req.DurationMinutes / 10 * 100) + (req.PagesRead * 10)
+	if xpEarned < 50 { xpEarned = 50 } // Minimum XP for logging
+
+	// Update User XP, Level, and Streak
+	_, err = db.DB.Exec(`
+		UPDATE users 
+		SET xp = xp + $1,
+		    level = 1 + (xp + $1) / 1000,
+		    streak = CASE 
+		        WHEN last_activity IS NULL OR last_activity < NOW() - INTERVAL '48 hours' THEN 1
+		        WHEN last_activity < NOW() - INTERVAL '24 hours' THEN streak + 1
+		        ELSE streak
+		    END,
+		    last_activity = NOW()
+		WHERE id = $2`, xpEarned, req.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not update user stats", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "logged",
+		"xp_earned": xpEarned,
+	})
 }
 
 // GetLogs handles GET /logs/:user_id
 func GetLogs(c *gin.Context) {
-	uid, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
-	if err != nil {
+	uid := c.Param("user_id")
+	// log.Printf("DEBUG: GetLogs received user_id: [%s]", uid)
+	if uid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
 		return
 	}
@@ -65,7 +96,6 @@ func GetLogs(c *gin.Context) {
 		logs = append(logs, l)
 	}
 
-	// Always return an array, even if empty
 	if logs == nil {
 		logs = []models.ReadingLog{}
 	}
@@ -75,19 +105,16 @@ func GetLogs(c *gin.Context) {
 
 // UpdateLog handles PUT /logs/:id
 func UpdateLog(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid log id"})
-		return
-	}
-
+	// Log ID is still int64
 	var req createLogRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	_, err = db.DB.Exec(`
+	id := c.Param("id")
+
+	_, err := db.DB.Exec(`
 		UPDATE reading_logs SET book_name=$1, pages_read=$2, target_pages=$3, reflection=$4
 		WHERE id=$5 AND user_id=$6`,
 		req.BookName, req.PagesRead, req.TargetPages, req.Reflection, id, req.UserID)
@@ -101,15 +128,9 @@ func UpdateLog(c *gin.Context) {
 
 // DeleteLog handles DELETE /logs/:id
 func DeleteLog(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid log id"})
-		return
-	}
+	id := c.Param("id")
 
-	// Get user_id from token or param, but for simplicity, assume user_id in body or use auth
-	// For now, just delete by id (insecure, but for demo)
-	_, err = db.DB.Exec(`DELETE FROM reading_logs WHERE id=$1`, id)
+	_, err := db.DB.Exec(`DELETE FROM reading_logs WHERE id=$1`, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not delete log"})
 		return

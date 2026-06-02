@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Trash2, Reply, Send, X, User } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 function formatTime(dateString) {
   if (!dateString) return '';
@@ -41,7 +43,6 @@ export default function ChatBox({
   onUserClick
 }) {
   const [replyTo, setReplyTo] = useState(null);
-  const [replyText, setReplyText] = useState('');
   const [messageText, setMessageText] = useState('');
   const endRef = useRef();
 
@@ -51,16 +52,13 @@ export default function ChatBox({
       if (m?.id) byId.set(m.id, m);
     }
 
-    const roots = messages || [];
-
+    const roots = [...(messages || [])];
     const sortByTime = (a, b) => {
       const ta = a?.created_at ? new Date(a.created_at).getTime() : 0;
       const tb = b?.created_at ? new Date(b.created_at).getTime() : 0;
       return ta - tb;
     };
-
     roots.sort(sortByTime);
-
     return { roots, byId };
   }, [messages]);
 
@@ -68,17 +66,11 @@ export default function ChatBox({
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const sendReply = () => {
-    if (!replyText.trim() || !onSend || !replyTo) return;
-    onSend(replyText, replyTo);
-    setReplyText('');
-    setReplyTo(null);
-  };
-
-  const sendMessage = () => {
+  const handleSendMessage = () => {
     if (!messageText.trim() || !onSend) return;
-    onSend(messageText);
+    onSend(messageText, replyTo);
     setMessageText('');
+    setReplyTo(null);
   };
 
   const canDelete = (m) => {
@@ -88,64 +80,81 @@ export default function ChatBox({
   };
 
   const renderMessage = (m, index) => {
+    const isMe = m.user?.id === user?.id;
     const key = messageKey(m, index);
-    // Use current user's data for consistency if this is their message
-    const messageUser = (m.user?.id === user?.id && user) ? user : m.user;
-    const avatarLabel = (messageUser?.username || messageUser?.email || 'A')[0].toUpperCase();
+    const messageUser = (isMe && user) ? user : m.user;
+    const avatarLabel = (messageUser?.username || messageUser?.email || 'U')[0].toUpperCase();
     const parent = m.reply_to_id ? byId.get(m.reply_to_id) : null;
     const parentUser = parent?.user?.id === user?.id && user ? user : parent?.user;
 
     return (
-      <div key={key}>
-        <div className="flex items-start space-x-3 group">
+      <div key={key} className={cn("flex w-full mb-4 group", isMe ? "justify-end" : "justify-start")}>
+        <div className={cn("flex max-w-[80%] items-end gap-2", isMe ? "flex-row-reverse" : "flex-row")}>
           <div
-            className={`w-8 h-8 bg-accent rounded-full flex items-center justify-center text-white text-xs font-bold ${
-              onUserClick ? 'cursor-pointer' : ''
-            }`}
+            className={cn(
+              "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-lg shrink-0",
+              isMe ? "bg-indigo-600" : "bg-slate-700",
+              onUserClick && "cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-all"
+            )}
             onClick={() => onUserClick?.(messageUser)}
           >
             {avatarLabel}
           </div>
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-baseline space-x-2">
-              <span
-                className={`text-m text-white ${onUserClick ? 'cursor-pointer' : ''}`}
-                onClick={() => onUserClick?.(messageUser)}
-              >
+          <div className={cn("flex flex-col", isMe ? "items-end" : "items-start")}>
+            <div className="flex items-center gap-2 mb-1 px-1">
+              <span className="text-[11px] font-medium text-slate-400">
                 {messageUser?.username || messageUser?.email || 'Anonymous'}
               </span>
-              <span className="text-xs text-muted">{formatTime(m.created_at)}</span>
+              <span className="text-[10px] text-slate-500">{formatTime(m.created_at)}</span>
             </div>
 
             {parent && (
-              <div className="mt-1 text-xs text-muted border-l border-gray-700 pl-2 truncate">
-                Replying to <span className="text-gray-300">{parentUser?.username || parentUser?.email || 'Anonymous'}</span>:
-                <span className="ml-1 text-gray-400">{parent.body}</span>
+              <div className={cn(
+                "mb-1 px-3 py-1 rounded-lg bg-slate-800/50 border border-slate-700 text-[11px] text-slate-400 flex items-center gap-2 max-w-full",
+                isMe ? "rounded-br-none" : "rounded-bl-none"
+              )}>
+                <Reply size={10} className="text-slate-500" />
+                <span className="truncate">
+                  <span className="text-slate-300 mr-1">{parentUser?.username || 'User'}:</span>
+                  {parent.body}
+                </span>
               </div>
             )}
 
-            <div className="text-m text-white mt-1 break-words">{m.body}</div>
-
-            {!readOnly && (
-              <div className="flex gap-2 mt-1">
-                <button
-                  onClick={() => setReplyTo(m)}
-                  className="text-xs text-muted hover:text-white transition-opacity"
-                >
-                  Reply
-                </button>
-
-                {canDelete(m) && (
+            <div className={cn(
+              "px-4 py-2.5 rounded-2xl text-sm relative group/bubble",
+              isMe 
+                ? "bg-indigo-600 text-white rounded-tr-none shadow-indigo-900/20" 
+                : "bg-slate-800 text-slate-100 rounded-tl-none border border-slate-700 shadow-slate-950/20",
+              "shadow-lg"
+            )}>
+              <div className="break-words leading-relaxed">{m.body}</div>
+              
+              {!readOnly && (
+                <div className={cn(
+                  "absolute top-0 opacity-0 group-hover/bubble:opacity-100 transition-opacity flex items-center gap-1 bg-slate-900/90 backdrop-blur-sm border border-slate-700 rounded-lg p-1 shadow-xl z-10",
+                  isMe ? "-left-16" : "-right-16"
+                )}>
                   <button
-                    onClick={() => onDelete?.(m)}
-                    className="text-xs text-red-400 hover:text-red-300 transition-opacity"
+                    onClick={() => setReplyTo(m)}
+                    className="p-1.5 hover:bg-slate-700 rounded-md text-slate-400 hover:text-white transition-colors"
+                    title="Reply"
                   >
-                    Delete
+                    <Reply size={14} />
                   </button>
-                )}
-              </div>
-            )}
+                  {canDelete(m) && (
+                    <button
+                      onClick={() => onDelete?.(m)}
+                      className="p-1.5 hover:bg-red-900/30 rounded-md text-slate-400 hover:text-red-400 transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -162,15 +171,16 @@ export default function ChatBox({
 
       if (currentDate !== lastDate) {
         elements.push(
-          <div key={`date-${currentDate}`} className="flex items-center justify-center my-4">
-            <div className="bg-gray-700 text-white text-xs px-3 py-1 rounded-full">
+          <div key={`date-${currentDate}`} className="flex items-center gap-4 my-8">
+            <div className="h-px flex-1 bg-slate-800"></div>
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-4 py-1 border border-slate-800 rounded-full bg-slate-900/50">
               {formatDate(m.created_at)}
             </div>
+            <div className="h-px flex-1 bg-slate-800"></div>
           </div>
         );
         lastDate = currentDate;
       }
-
       elements.push(renderMessage(m, i));
     }
 
@@ -178,61 +188,60 @@ export default function ChatBox({
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="overflow-y-auto p-4 space-y-4">
-        {renderMessagesWithDates()}
+    <div className="flex flex-col h-full bg-slate-950/50">
+      <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
+        {roots.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4">
+            <div className="w-16 h-16 rounded-3xl bg-slate-900 flex items-center justify-center border border-slate-800 shadow-inner">
+              <User size={32} className="opacity-20" />
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-medium">No messages yet</p>
+              <p className="text-xs opacity-60">Be the first to start the discussion!</p>
+            </div>
+          </div>
+        ) : (
+          renderMessagesWithDates()
+        )}
         <div ref={endRef} />
       </div>
 
-      {!readOnly && !replyTo && (
-        <div className="p-4 border-t border-gray-800 mt-auto">
-          <div className="flex gap-2">
-            <input
-              className="flex-1 bg-[#07101a] rounded-md px-3 py-2 text-sm border border-gray-800 focus:outline-none focus:ring-2 focus:ring-accent"
-              value={messageText}
-              onChange={(e) => setMessageText(e.target.value)}
-              placeholder={`Message #${channel}`}
-              onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-            />
+      {!readOnly && (
+        <div className="p-4 bg-slate-900/40 border-t border-slate-800/50 backdrop-blur-md">
+          {replyTo && (
+            <div className="mb-2 px-3 py-2 bg-indigo-950/30 border border-indigo-900/30 rounded-lg flex items-center justify-between animate-in slide-in-from-bottom-2 duration-200">
+              <div className="flex items-center gap-2 text-xs text-indigo-300 truncate">
+                <Reply size={12} />
+                <span className="font-medium text-indigo-200">
+                  {replyTo.user?.username || 'User'}
+                </span>
+                <span className="opacity-60 truncate">"{replyTo.body}"</span>
+              </div>
+              <button 
+                onClick={() => setReplyTo(null)}
+                className="text-indigo-400 hover:text-indigo-200 p-1"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+          
+          <div className="relative flex items-center gap-3">
+            <div className="relative flex-1 group">
+              <input
+                className="w-full bg-slate-900/80 rounded-xl px-4 py-3 text-sm text-white border border-slate-700/50 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all placeholder:text-slate-600 shadow-inner"
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                placeholder={`Message #${channel}...`}
+                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+              />
+            </div>
             <button
-              className="px-4 py-2 bg-accent rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
-              onClick={sendMessage}
+              className="flex items-center justify-center w-11 h-11 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-900/20 transition-all active:scale-95 disabled:opacity-50 disabled:grayscale"
+              onClick={handleSendMessage}
               disabled={!messageText.trim()}
             >
-              Send
-            </button>
-          </div>
-        </div>
-      )}
-
-      {replyTo && !readOnly && (
-        <div className="p-4 border-t border-gray-800 mt-auto">
-          <div className="mb-2 text-sm text-muted truncate">
-            Replying to {replyTo.user?.username || replyTo.user?.email || 'Anonymous'}: "{replyTo.body}"
-          </div>
-          <div className="flex gap-2">
-            <input
-              className="flex-1 bg-[#07101a] rounded-md px-3 py-2 text-sm border border-gray-800 focus:outline-none focus:ring-2 focus:ring-accent"
-              value={replyText}
-              onChange={(e) => setReplyText(e.target.value)}
-              placeholder="Type your reply..."
-              onKeyPress={(e) => e.key === 'Enter' && sendReply()}
-            />
-            <button
-              className="px-4 py-2 bg-accent rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
-              onClick={sendReply}
-              disabled={!replyText.trim()}
-            >
-              Reply
-            </button>
-            <button
-              className="px-4 py-2 bg-gray-600 rounded-md text-sm font-medium hover:opacity-90"
-              onClick={() => {
-                setReplyTo(null);
-                setReplyText('');
-              }}
-            >
-              Cancel
+              <Send size={18} />
             </button>
           </div>
         </div>

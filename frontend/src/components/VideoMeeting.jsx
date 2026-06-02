@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { sendMessage } from '../services/ws';
+import { cn } from '../lib/utils';
 
 const VideoMeeting = ({ user, incomingSignal, onClose }) => {
     const [meetingCode, setMeetingCode] = useState('');
@@ -14,6 +15,14 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
     const [isCreator, setIsCreator] = useState(false);
     const [pendingRequests, setPendingRequests] = useState([]); // Array of { id, username }
     const [waitingForApproval, setWaitingForApproval] = useState(false);
+
+    // Audio & Video controls state
+    const [isMicEnabled, setIsMicEnabled] = useState(true);
+    const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+
+    // Google Meet style states (pinning and fullscreen display)
+    const [pinnedUserId, setPinnedUserId] = useState(null);
+    const [isFullScreen, setIsFullScreen] = useState(false);
 
     const localVideoRef = useRef(null);
 
@@ -54,6 +63,8 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
                 }
             }
             setLocalStream(stream);
+            setIsMicEnabled(true);
+            setIsVideoEnabled(stream.getVideoTracks().length > 0);
             if (localVideoRef.current) localVideoRef.current.srcObject = stream;
             return stream;
         } catch (err) {
@@ -109,20 +120,11 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
         });
     };
 
-    const joinMeeting = async (code) => {
-        try {
-            // REMOVE OLD joinMeeting LOGIC
-            // Main logic is now split between createMeeting and joinMeetingInput+enterMeeting
-
-        } catch (err) {
-            console.error("Failed to get media", err);
-            alert("Could not access camera/microphone: " + err.message + "\nPlease check permissions or if another app is using the device.");
-        }
-    };
-
     const cleanupResources = () => {
         Object.values(peersRef.current).forEach(p => {
-            p.connection.close();
+            if (p.connection) {
+                p.connection.close();
+            }
         });
         setPeers({});
         peersRef.current = {};
@@ -137,6 +139,10 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
         setIsCreator(false);
         setPendingRequests([]);
         setMeetingCode('');
+        setIsMicEnabled(true);
+        setIsVideoEnabled(true);
+        setPinnedUserId(null);
+        setIsFullScreen(false);
     };
 
     const handleApprove = (requesterId) => {
@@ -162,11 +168,46 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
         if (onClose) onClose();
     };
 
+    const toggleMic = () => {
+        if (localStream) {
+            const audioTrack = localStream.getAudioTracks()[0];
+            if (audioTrack) {
+                audioTrack.enabled = !audioTrack.enabled;
+                setIsMicEnabled(audioTrack.enabled);
+            }
+        }
+    };
+
+    const toggleVideo = () => {
+        if (localStream) {
+            const videoTrack = localStream.getVideoTracks()[0];
+            if (videoTrack) {
+                videoTrack.enabled = !videoTrack.enabled;
+                setIsVideoEnabled(videoTrack.enabled);
+            }
+        }
+    };
+
+    // Process ice candidates queued before remote description is set
+    const processQueuedCandidates = async (pc) => {
+        if (pc.iceCandidatesQueue) {
+            for (const cand of pc.iceCandidatesQueue) {
+                try {
+                    await pc.addIceCandidate(new RTCIceCandidate(cand));
+                } catch (e) {
+                    console.error("Error processing queued ice candidate:", e);
+                }
+            }
+            pc.iceCandidatesQueue = [];
+        }
+    };
+
     // Helper to create peer connection
     const createPeerConnection = (targetUserId, targetUsername, initiator = false) => {
         if (peersRef.current[targetUserId]) return peersRef.current[targetUserId].connection;
 
         const pc = new RTCPeerConnection(rtcConfig);
+        pc.iceCandidatesQueue = [];
 
         // Add local tracks
         if (localStreamRef.current) {
@@ -215,20 +256,16 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
 
     // Handle incoming signals
     useEffect(() => {
-        // For waiting users: always listen to join_response
-        // For creators: listen to join_request
-        // For active meeters: listen to regular signals
-
-        // Filter by code if we have one set
         if (!incomingSignal) return;
 
-        const { payload, sender, incomingCode } = incomingSignal;
-        const { signalType } = payload;
+        const { payload, user: sender } = incomingSignal;
+        if (!payload) return;
+        const { signalType, meetingCode: incomingCode } = payload;
 
         if (meetingCode && incomingCode !== meetingCode) return;
 
         // Ignore self
-        if (sender.id === user.id) return;
+        if (sender && sender.id === user.id) return;
 
         const handleSignal = async () => {
             try {
@@ -236,7 +273,7 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
                 if (signalType === 'join_request') {
                     // Only Creator handles requests
                     if (isCreator && incomingCode === meetingCode) {
-                        console.log("Join request from:", sender.username);
+                        console.log("Join request from:", sender?.username);
                         setPendingRequests(prev => {
                             if (prev.find(r => r.id === sender.id)) return prev;
                             return [...prev, sender];
@@ -266,7 +303,7 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
 
                 if (signalType === 'join_announce') {
                     // New peer joined, existing peer initiates offer
-                    console.log("New peer joined:", sender.username);
+                    console.log("New peer joined:", sender?.username);
                     const pc = createPeerConnection(sender.id, sender.username, true);
                     const offer = await pc.createOffer();
                     await pc.setLocalDescription(offer);
@@ -281,7 +318,7 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
                         }
                     });
                 } else if (signalType === 'offer') {
-                    console.log("Received offer from:", sender.username);
+                    console.log("Received offer from:", sender?.username);
                     const pc = createPeerConnection(sender.id, sender.username, false);
                     await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
                     const answer = await pc.createAnswer();
@@ -296,16 +333,27 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
                             meetingCode: meetingCode
                         }
                     });
+
+                    await processQueuedCandidates(pc);
                 } else if (signalType === 'answer') {
-                    console.log("Received answer from:", sender.username);
+                    console.log("Received answer from:", sender?.username);
                     const pc = peersRef.current[sender.id]?.connection;
                     if (pc) {
                         await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+                        await processQueuedCandidates(pc);
                     }
                 } else if (signalType === 'ice-candidate') {
                     const pc = peersRef.current[sender.id]?.connection;
                     if (pc && payload.candidate) {
-                        await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+                        try {
+                            if (pc.remoteDescription && pc.remoteDescription.type) {
+                                await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+                            } else {
+                                pc.iceCandidatesQueue.push(payload.candidate);
+                            }
+                        } catch (e) {
+                            console.error("Error adding ice candidate:", e);
+                        }
                     }
                 }
             } catch (err) {
@@ -389,7 +437,12 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
                     </button>
                 </div>
             ) : (
-                <div className="bg-black/90 p-4 rounded-3xl border border-white/10 shadow-2xl flex flex-col gap-4 backdrop-blur-md max-w-2xl w-full mx-4 relative">
+                <div className={cn(
+                    "bg-black/90 p-4 shadow-2xl flex flex-col gap-4 backdrop-blur-md transition-all duration-300 relative select-none",
+                    isFullScreen 
+                        ? "fixed inset-0 w-screen h-screen rounded-none z-[9999]" 
+                        : "rounded-3xl border border-white/10 max-w-4xl w-full mx-4"
+                )}>
                     {/* Pending Requests Overlay for Host */}
                     {isCreator && pendingRequests.length > 0 && (
                         <div className="absolute top-16 right-4 left-4 bg-gray-800/90 backdrop-blur-md p-3 rounded-xl border border-white/10 z-20 shadow-xl animate-in fade-in slide-in-from-top-2">
@@ -418,43 +471,236 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
                             </div>
                             <span className="text-white/30 text-xs">Share this code</span>
                         </div>
-                        <button onClick={leaveMeeting} className="text-red-400 hover:text-white hover:bg-red-500/80 p-2 rounded-full transition duration-300">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                        </button>
+                        <div className="flex items-center gap-2">
+                            {/* Fullscreen Expand / Collapse Button */}
+                            <button
+                                onClick={() => setIsFullScreen(!isFullScreen)}
+                                className="text-slate-400 hover:text-white p-2 rounded-full hover:bg-white/5 transition"
+                                title={isFullScreen ? "Exit Fullscreen" : "Fullscreen View"}
+                            >
+                                {isFullScreen ? (
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7"/></svg>
+                                ) : (
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3m11-11l6-6m-6 6v-5m0 5h5m-11 6l-6 6m6-6v5m0-5h-5"/></svg>
+                                )}
+                            </button>
+                            <button onClick={leaveMeeting} className="text-red-400 hover:text-white hover:bg-red-500/80 p-2 rounded-full transition duration-300">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                            </button>
+                        </div>
                     </div>
 
-                    {/* Video Grid */}
-                    <div className={`grid gap-4 ${Object.keys(peers).length === 0 ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-3'}`}>
-                        {/* Local Video */}
-                        <div className="relative w-full aspect-video bg-gray-900 rounded-2xl overflow-hidden shadow-lg border border-white/5 group">
-                            <video
-                                ref={localVideoRef}
-                                autoPlay
-                                playsInline
-                                muted
-                                className="w-full h-full object-cover transform scale-x-[-1]"
-                            />
-                            <div className="absolute bottom-3 left-3 bg-black/60 px-2 py-1 rounded-md backdrop-blur-sm">
-                                <span className="text-xs text-white font-medium">You</span>
+                    {/* Dominant / Pinned View or Regular Grid View */}
+                    {pinnedUserId ? (
+                        <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0 overflow-hidden">
+                            {/* Pinned main video */}
+                            <div className="flex-1 relative bg-gray-950 rounded-2xl overflow-hidden border border-indigo-500/20 group">
+                                {pinnedUserId === 'local' ? (
+                                    <video
+                                        ref={localVideoRef}
+                                        autoPlay
+                                        playsInline
+                                        muted
+                                        className="w-full h-full object-contain transform scale-x-[-1]"
+                                    />
+                                ) : (
+                                    <video
+                                        autoPlay
+                                        playsInline
+                                        ref={el => {
+                                            const peer = peers[pinnedUserId];
+                                            if (el && peer && peer.stream) el.srcObject = peer.stream;
+                                        }}
+                                        className="w-full h-full object-contain"
+                                    />
+                                )}
+                                <div className="absolute bottom-3 left-3 bg-black/60 px-3 py-1.5 rounded-lg backdrop-blur-sm flex items-center gap-2 border border-white/5">
+                                    <span className="text-xs text-white font-medium">
+                                        {pinnedUserId === 'local' ? 'You' : peers[pinnedUserId]?.username}
+                                    </span>
+                                    <span className="text-[10px] bg-indigo-500 text-white px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Pinned</span>
+                                </div>
+                                <button
+                                    onClick={() => setPinnedUserId(null)}
+                                    className="absolute top-3 right-3 p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full transition shadow-lg opacity-0 group-hover:opacity-100"
+                                    title="Unpin video"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <line x1="21" y1="10" x2="3" y2="10"/>
+                                        <line x1="21" y1="6" x2="3" y2="6"/>
+                                        <line x1="21" y1="14" x2="3" y2="14"/>
+                                        <line x1="21" y1="18" x2="3" y2="18"/>
+                                    </svg>
+                                </button>
+                            </div>
+
+                            {/* Sidebar other thumbnails */}
+                            <div className="w-full md:w-56 flex md:flex-col gap-3 overflow-x-auto md:overflow-y-auto pr-1 flex-shrink-0">
+                                {/* Local preview thumbnail (if not pinned) */}
+                                {pinnedUserId !== 'local' && (
+                                    <div 
+                                        className="relative w-40 md:w-full aspect-video bg-gray-900 rounded-xl overflow-hidden border border-white/5 group cursor-pointer hover:border-indigo-500/50 transition flex-shrink-0"
+                                        onClick={() => setPinnedUserId('local')}
+                                    >
+                                        <video
+                                            ref={localVideoRef}
+                                            autoPlay
+                                            playsInline
+                                            muted
+                                            className="w-full h-full object-cover transform scale-x-[-1]"
+                                        />
+                                        <div className="absolute bottom-2 left-2 bg-black/60 px-2 py-0.5 rounded text-[10px] text-white">You</div>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setPinnedUserId('local'); }}
+                                            className="absolute top-2 right-2 p-1.5 bg-black/70 hover:bg-indigo-600 text-white rounded-lg transition opacity-0 group-hover:opacity-100"
+                                            title="Pin video"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Other peers thumbnails */}
+                                {Object.values(peers).map(peer => {
+                                    if (pinnedUserId === peer.id) return null;
+                                    return (
+                                        <div 
+                                            key={peer.id}
+                                            className="relative w-40 md:w-full aspect-video bg-gray-900 rounded-xl overflow-hidden border border-white/5 group cursor-pointer hover:border-indigo-500/50 transition flex-shrink-0"
+                                            onClick={() => setPinnedUserId(peer.id)}
+                                        >
+                                            <video
+                                                autoPlay
+                                                playsInline
+                                                ref={el => {
+                                                    if (el && peer.stream) el.srcObject = peer.stream;
+                                                }}
+                                                className="w-full h-full object-cover"
+                                            />
+                                            <div className="absolute bottom-2 left-2 bg-black/60 px-2 py-0.5 rounded text-[10px] text-white truncate max-w-[100px]">{peer.username}</div>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setPinnedUserId(peer.id); }}
+                                                className="absolute top-2 right-2 p-1.5 bg-black/70 hover:bg-indigo-600 text-white rounded-lg transition opacity-0 group-hover:opacity-100"
+                                                title="Pin video"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                                            </button>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
-
-                        {/* Remote Peers */}
-                        {Object.values(peers).map(peer => (
-                            <div key={peer.id} className="relative w-full aspect-video bg-gray-900 rounded-2xl overflow-hidden shadow-lg border border-white/5">
+                    ) : (
+                        /* Default Grid View */
+                        <div className={cn(
+                            "grid gap-4 flex-1",
+                            isFullScreen ? "max-h-[calc(100vh-140px)]" : "",
+                            Object.keys(peers).length === 0 
+                                ? 'grid-cols-1' 
+                                : Object.keys(peers).length === 1 
+                                    ? 'grid-cols-1 md:grid-cols-2' 
+                                    : 'grid-cols-2 md:grid-cols-3'
+                        )}>
+                            {/* Local Video */}
+                            <div className="relative w-full aspect-video bg-gray-900 rounded-2xl overflow-hidden shadow-lg border border-white/5 group">
                                 <video
+                                    ref={localVideoRef}
                                     autoPlay
                                     playsInline
-                                    ref={el => {
-                                        if (el && peer.stream) el.srcObject = peer.stream;
-                                    }}
-                                    className="w-full h-full object-cover"
+                                    muted
+                                    className="w-full h-full object-cover transform scale-x-[-1]"
                                 />
                                 <div className="absolute bottom-3 left-3 bg-black/60 px-2 py-1 rounded-md backdrop-blur-sm">
-                                    <span className="text-xs text-white font-medium">{peer.username}</span>
+                                    <span className="text-xs text-white font-medium">You</span>
                                 </div>
+                                <button
+                                    onClick={() => setPinnedUserId('local')}
+                                    className="absolute top-3 right-3 p-2 bg-black/70 hover:bg-indigo-600 text-white rounded-xl transition opacity-0 group-hover:opacity-100 shadow-md"
+                                    title="Pin video"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                                </button>
                             </div>
-                        ))}
+
+                            {/* Remote Peers */}
+                            {Object.values(peers).map(peer => (
+                                <div key={peer.id} className="relative w-full aspect-video bg-gray-900 rounded-2xl overflow-hidden shadow-lg border border-white/5 group">
+                                    <video
+                                        autoPlay
+                                        playsInline
+                                        ref={el => {
+                                            if (el && peer.stream) el.srcObject = peer.stream;
+                                        }}
+                                        className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute bottom-3 left-3 bg-black/60 px-2 py-1 rounded-md backdrop-blur-sm">
+                                        <span className="text-xs text-white font-medium">{peer.username}</span>
+                                    </div>
+                                    <button
+                                        onClick={() => setPinnedUserId(peer.id)}
+                                        className="absolute top-3 right-3 p-2 bg-black/70 hover:bg-indigo-600 text-white rounded-xl transition opacity-0 group-hover:opacity-100 shadow-md"
+                                        title="Pin video"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Media Controls & Disconnect */}
+                    <div className="flex justify-center gap-4 mt-2 border-t border-white/5 pt-4">
+                        <button
+                            onClick={toggleMic}
+                            className={`p-3 rounded-full transition duration-300 ${isMicEnabled ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-red-600 text-white hover:bg-red-700'}`}
+                            title={isMicEnabled ? "Mute Microphone" : "Unmute Microphone"}
+                        >
+                            {isMicEnabled ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                    <line x1="12" y1="19" x2="12" y2="23"/>
+                                    <line x1="8" y1="23" x2="16" y2="23"/>
+                                </svg>
+                            ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="1" y1="1" x2="23" y2="23"/>
+                                    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
+                                    <path d="M17 17A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
+                                    <line x1="12" y1="19" x2="12" y2="23"/>
+                                    <line x1="8" y1="23" x2="16" y2="23"/>
+                                </svg>
+                            )}
+                        </button>
+
+                        <button
+                            onClick={toggleVideo}
+                            className={`p-3 rounded-full transition duration-300 ${isVideoEnabled ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-red-600 text-white hover:bg-red-700'}`}
+                            title={isVideoEnabled ? "Turn Camera Off" : "Turn Camera On"}
+                        >
+                            {isVideoEnabled ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M23 7l-7 5 7 5V7z"/>
+                                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                                </svg>
+                            ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"/>
+                                    <line x1="1" y1="1" x2="23" y2="23"/>
+                                </svg>
+                            )}
+                        </button>
+
+                        <button
+                            onClick={leaveMeeting}
+                            className="bg-red-600 hover:bg-red-700 text-white p-3 rounded-full transition duration-300"
+                            title="Disconnect Call"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/>
+                                <line x1="23" y1="1" x2="1" y2="23"/>
+                            </svg>
+                        </button>
                     </div>
                 </div>
             )}

@@ -23,12 +23,14 @@ var googleOauthConfig = &oauth2.Config{
 }
 
 func SetupRouter(hub *Hub) *gin.Engine {
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery()) // Still catch crashes, but don't log every request
 
 	frontendURL := os.Getenv("FRONTEND_URL")
 
 	origins := []string{
 		"http://localhost:5173",
+		"http://127.0.0.1:5173",
 	}
 
 	if frontendURL != "" {
@@ -38,7 +40,7 @@ func SetupRouter(hub *Hub) *gin.Engine {
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     origins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-User-ID"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))

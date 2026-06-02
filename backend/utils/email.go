@@ -48,19 +48,19 @@ func (e *EmailService) SendEmail(to, subject, body string) error {
 	return nil
 }
 
-func (e *EmailService) SendReadingReminder(to, username string, unreadBooks int, userID int) error {
-	subject := "Reading Room - Daily Reading Reminder"
+func (e *EmailService) SendReadingReminder(to, username string, unreadBooks int, userID string) error {
+	subject := "FocusSpace - Daily Reading Reminder"
 
-	unsubscribeURL := fmt.Sprintf("http://localhost:5173/notifications/unsubscribe/%d", userID)
+	unsubscribeURL := fmt.Sprintf("http://localhost:5173/notifications/unsubscribe/%s", userID)
 
 	body := fmt.Sprintf(`Hi %s,
 
-This is your daily reading reminder from Reading Room!
+This is your daily reading reminder from FocusSpace!
 
 You have %d books waiting to be read. Keep up the great work!
 
 Happy reading!
-The Reading Room Team
+The FocusSpace Team
 
 ---
 To unsubscribe from these reminders, click here: %s

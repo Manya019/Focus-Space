@@ -22,8 +22,6 @@ func NewNotificationScheduler() *NotificationScheduler {
 }
 
 func (ns *NotificationScheduler) Start() {
-	log.Println("Starting notification scheduler...")
-
 	// Check every minute for users who need notifications
 	ticker := time.NewTicker(1 * time.Minute)
 	go func() {
@@ -53,7 +51,7 @@ func (ns *NotificationScheduler) checkAndSendNotifications() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var userID int
+		var userID string
 		var username, email, notifyTime string
 
 		err := rows.Scan(&userID, &username, &email, &notifyTime)

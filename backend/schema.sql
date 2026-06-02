@@ -1,10 +1,10 @@
--- PostgreSQL schema for Reading Room
+-- PostgreSQL schema for Reading Room (Modernized for Clerk String IDs)
 
 CREATE TABLE IF NOT EXISTS users (
-    id SERIAL PRIMARY KEY,
+    id TEXT PRIMARY KEY, -- Clerk User ID (user_...)
     username TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
+    password_hash TEXT DEFAULT '', -- Not used with Clerk but kept for compatibility
     genre TEXT DEFAULT '',
     about TEXT DEFAULT '',
     likes TEXT DEFAULT '',
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS reading_logs (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     book_name TEXT NOT NULL,
     pages_read INTEGER NOT NULL,
     target_pages INTEGER DEFAULT 0,
@@ -22,14 +22,14 @@ CREATE TABLE IF NOT EXISTS reading_logs (
 );
 
 CREATE TABLE IF NOT EXISTS user_notifications (
-    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     enabled BOOLEAN DEFAULT FALSE,
     notify_time TEXT DEFAULT '09:00'
 );
 
 CREATE TABLE IF NOT EXISTS messages (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     channel TEXT NOT NULL,
     body TEXT NOT NULL,
     reply_to_id INTEGER REFERENCES messages(id) ON DELETE SET NULL,
@@ -37,26 +37,6 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_channel_created ON messages(channel, created_at DESC);
-
--- Backfill / upgrades for existing deployments
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'reply_to_id') THEN
-        ALTER TABLE messages ADD COLUMN reply_to_id INTEGER;
-    END IF;
-END $$;
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conname = 'fk_messages_reply_to'
-    ) THEN
-        ALTER TABLE messages
-            ADD CONSTRAINT fk_messages_reply_to
-            FOREIGN KEY (reply_to_id) REFERENCES messages(id) ON DELETE SET NULL;
-    END IF;
-END $$;
 CREATE INDEX IF NOT EXISTS idx_messages_reply_to_id ON messages(reply_to_id);
 
 CREATE TABLE IF NOT EXISTS books (
@@ -70,9 +50,8 @@ CREATE TABLE IF NOT EXISTS books (
 CREATE TABLE IF NOT EXISTS reviews (
     id SERIAL PRIMARY KEY,
     book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     rating INTEGER CHECK (rating >= 1 AND rating <= 5),
     review_text TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
-

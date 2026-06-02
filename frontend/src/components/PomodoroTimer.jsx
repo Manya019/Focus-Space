@@ -1,49 +1,22 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { Play, Pause, RotateCcw, Coffee, BookOpen, Moon, Timer, ChevronRight } from 'lucide-react';
+import { cn } from '../lib/utils';
+import { usePomo } from '../state/pomo';
 
-export default function PomodoroTimer() {
-  const [timeLeft, setTimeLeft] = useState(25 * 60); // 25 minutes in seconds
-  const [isRunning, setIsRunning] = useState(false);
-  const [isWork, setIsWork] = useState(true);
-  const [cycles, setCycles] = useState(0);
-  const [workDuration, setWorkDuration] = useState(25);
-  const [breakDuration, setBreakDuration] = useState(5);
-  const [longBreakDuration, setLongBreakDuration] = useState(15);
-  const intervalRef = useRef(null);
+export default function PomodoroTimer({ variant }) {
+  const { 
+    timeLeft, 
+    isRunning, 
+    mode, 
+    toggleTimer, 
+    resetTimer, 
+    setTimerMode,
+    progress 
+  } = usePomo();
 
-  const workTime = workDuration * 60;
-  const breakTime = breakDuration * 60;
-  const longBreakTime = longBreakDuration * 60;
-
-  useEffect(() => {
-    if (isRunning) {
-      intervalRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            setIsRunning(false);
-            if (isWork) {
-              setCycles((c) => c + 1);
-              if ((cycles + 1) % 4 === 0) {
-                setTimeLeft(longBreakTime);
-              } else {
-                setTimeLeft(breakTime);
-              }
-              setIsWork(false);
-            } else {
-              setTimeLeft(workTime);
-              setIsWork(true);
-            }
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    }
-    return () => clearInterval(intervalRef.current);
-  }, [isRunning, isWork, cycles, workTime, breakTime, longBreakTime]);
+  const [showCustom, setShowCustom] = useState(false);
+  const [customVal, setCustomVal] = useState('25');
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -51,59 +24,278 @@ export default function PomodoroTimer() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const startTimer = () => setIsRunning(true);
-  const pauseTimer = () => setIsRunning(false);
-  const resetTimer = () => {
-    setIsRunning(false);
-    setTimeLeft(workDuration * 60);
-    setIsWork(true);
-    setCycles(0);
+  const modeConfig = {
+    work: { 
+      label: 'Focus', 
+      icon: BookOpen, 
+      activeTab: 'bg-indigo-500/10 text-indigo-400',
+      button: 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-900/20',
+      dot: 'bg-indigo-500',
+      progress: 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]'
+    },
+    break: { 
+      label: 'Break', 
+      icon: Coffee, 
+      activeTab: 'bg-emerald-500/10 text-emerald-400',
+      button: 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/20',
+      dot: 'bg-emerald-500',
+      progress: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]'
+    },
+    longBreak: { 
+      label: 'Rest', 
+      icon: Moon, 
+      activeTab: 'bg-purple-500/10 text-purple-400',
+      button: 'bg-purple-600 hover:bg-purple-500 shadow-purple-900/20',
+      dot: 'bg-purple-500',
+      progress: 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)]'
+    }
   };
 
-  return (
-    <div className="backdrop-blur-2xl bg-white/20 border border-white/25 rounded-2xl shadow-2xl p-4 transition-all duration-300 ease-in-out hover:bg-white/25 flex flex-col items-center gap-4">
-      <div className="flex-1">
-        <h3 className="text-sm font-semibold text-white/90">
-          {isWork ? 'Work' : cycles % 4 === 0 ? 'Long Break' : 'Break'}
-        </h3>
-        <div className="text-2xl font-mono font-bold text-white">
-          {formatTime(timeLeft)}
+  const presets = [
+    { label: '25m', value: 25 },
+    { label: '50m', value: 50 },
+    { label: '90m', value: 90 },
+  ];
+
+  const activeMode = modeConfig[mode] || modeConfig.work;
+
+  const handlePreset = (val) => {
+    setTimerMode(mode, val);
+    setShowCustom(false);
+  };
+
+  const handleCustomSubmit = (e) => {
+    e.preventDefault();
+    const val = parseInt(customVal);
+    if (!isNaN(val) && val > 0) {
+      setTimerMode(mode, val);
+      setShowCustom(false);
+    }
+  };
+
+  if (variant === 'bar') {
+    return (
+      <div className="w-full max-w-4xl bg-slate-900/60 backdrop-blur-xl border border-white/10 rounded-2xl px-6 py-2.5 shadow-2xl relative overflow-hidden group transition-all duration-500 hover:border-white/20 flex items-center justify-between gap-4">
+        {/* Background Glow */}
+        <div className={cn(
+          "absolute -left-12 top-0 w-24 h-24 blur-[30px] opacity-15 transition-all duration-1000 pointer-events-none",
+          mode === 'work' ? "bg-indigo-500" : mode === 'break' ? "bg-emerald-500" : "bg-purple-500"
+        )}></div>
+
+        {/* Left: Modes */}
+        <div className="flex bg-slate-950/40 rounded-xl border border-slate-800/40 p-0.5 min-w-[210px]">
+          {Object.entries(modeConfig).map(([key, config]) => {
+            const Icon = config.icon;
+            const isActive = mode === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setTimerMode(key)}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1 py-1 px-2 rounded-lg text-[9px] font-bold transition-all duration-300",
+                  isActive 
+                    ? config.activeTab 
+                    : "text-slate-500 hover:text-slate-300"
+                )}
+              >
+                <Icon size={10} />
+                <span>{config.label}</span>
+              </button>
+            );
+          })}
         </div>
-        <div className="flex gap-1 mt-1 justify-center">
-          <input
-            type="number"
-            min="1"
-            max="60"
-            value={workDuration}
-            onChange={(e) => setWorkDuration(Number(e.target.value))}
-            onKeyDown={(e) => { if (e.key === 'Enter') resetTimer(); }}
-            className="w-12 backdrop-blur-sm bg-white/10 border border-white/20 rounded px-1 py-1 text-xs text-center"
-            disabled={isRunning}
-          />
+
+        {/* Middle: Timer Display & Progress Bar */}
+        <div className="flex-1 flex items-center gap-4 max-w-md">
+          <div className="flex items-center gap-2.5 flex-shrink-0">
+            <span className="text-xl font-black text-white font-mono tracking-tighter">
+              {formatTime(timeLeft)}
+            </span>
+            <div className="flex items-center gap-1">
+              <div className={cn("w-1.5 h-1.5 rounded-full", isRunning ? "animate-pulse" : "", activeMode.dot)} />
+              <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">
+                {isRunning ? 'Flowing' : 'Paused'}
+              </span>
+            </div>
+          </div>
+          <div className="flex-1 h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800/20 relative">
+            <div 
+              className={cn(
+                "h-full transition-all duration-1000 ease-linear",
+                activeMode.progress
+              )}
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+        </div>
+
+        {/* Right: Quick Presets & Playback Controls */}
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1">
+            {presets.map((p) => (
+              <button
+                key={p.value}
+                onClick={() => handlePreset(p.value)}
+                className="px-2 py-1 rounded-lg bg-slate-950/40 border border-slate-800/40 text-[9px] font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="h-6 w-px bg-white/10" />
+          <div className="flex items-center gap-1">
+            <button
+              onClick={toggleTimer}
+              className={cn(
+                "w-7 h-7 flex items-center justify-center rounded-lg transition-all active:scale-90 shadow-md",
+                isRunning 
+                  ? "bg-slate-800 text-white hover:bg-slate-700" 
+                  : activeMode.button
+              )}
+            >
+              {isRunning ? <Pause size={10} fill="currentColor" /> : <Play size={10} className="ml-0.5" fill="currentColor" />}
+            </button>
+            
+            <button
+              onClick={resetTimer}
+              className="w-7 h-7 flex items-center justify-center bg-slate-900/40 hover:bg-slate-800 text-slate-500 hover:text-white rounded-lg border border-slate-800/50 transition-all active:scale-90"
+            >
+              <RotateCcw size={10} />
+            </button>
+          </div>
         </div>
       </div>
-      <div className="flex gap-2">
-        {!isRunning ? (
-          <button
-            onClick={startTimer}
-            className="backdrop-blur-lg bg-white/15 border border-white/20 rounded-xl px-3 py-2 text-sm font-medium text-white shadow-lg transition-all duration-200 ease-in-out hover:bg-white/25 hover:shadow-xl hover:scale-105"
-          >
-            Start
-          </button>
-        ) : (
-          <button
-            onClick={pauseTimer}
-            className="backdrop-blur-lg bg-white/15 border border-white/20 rounded-xl px-3 py-2 text-sm font-medium text-white shadow-lg transition-all duration-200 ease-in-out hover:bg-white/25 hover:shadow-xl hover:scale-105"
-          >
-            Pause
-          </button>
-        )}
-        <button
-          onClick={resetTimer}
-          className="backdrop-blur-lg bg-white/15 border border-white/20 rounded-xl px-3 py-2 text-sm font-medium text-white shadow-lg transition-all duration-200 ease-in-out hover:bg-white/25 hover:shadow-xl hover:scale-105"
-        >
-          Reset
-        </button>
+    );
+  }
+
+  return (
+    <div className="w-full max-w-[320px] bg-slate-900/60 backdrop-blur-xl border border-slate-800/50 rounded-[32px] p-5 shadow-2xl relative overflow-hidden group transition-all duration-500 hover:border-slate-700/50">
+      {/* Background Glow */}
+      <div className={cn(
+        "absolute -top-12 -right-12 w-32 h-32 blur-[50px] opacity-20 transition-all duration-1000",
+        mode === 'work' ? "bg-indigo-500" : mode === 'break' ? "bg-emerald-500" : "bg-purple-500"
+      )}></div>
+
+      <div className="relative z-10 flex flex-col gap-5">
+        {/* Compact Mode Toggle */}
+        <div className="flex p-1 bg-slate-950/40 rounded-2xl border border-slate-800/40">
+          {Object.entries(modeConfig).map(([key, config]) => {
+            const Icon = config.icon;
+            const isActive = mode === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setTimerMode(key)}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[10px] font-bold transition-all duration-300",
+                  isActive 
+                    ? config.activeTab 
+                    : "text-slate-500 hover:text-slate-300"
+                )}
+              >
+                <Icon size={12} />
+                <span>{config.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Main Timer Area */}
+        <div className="flex items-center justify-between px-1">
+          <div className="flex flex-col">
+            <div className="text-4xl font-black text-white font-mono tracking-tighter leading-none mb-1">
+              {formatTime(timeLeft)}
+            </div>
+            <div className="flex items-center gap-2">
+              <div className={cn("w-2 h-2 rounded-full", isRunning ? "animate-pulse" : "", activeMode.dot)} />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                {isRunning ? 'Flowing' : 'Paused'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={toggleTimer}
+              className={cn(
+                "w-12 h-12 flex items-center justify-center rounded-2xl transition-all active:scale-90 shadow-xl",
+                isRunning 
+                  ? "bg-slate-800 text-white hover:bg-slate-700" 
+                  : activeMode.button
+              )}
+            >
+              {isRunning ? <Pause size={20} fill="currentColor" /> : <Play size={20} className="ml-0.5" fill="currentColor" />}
+            </button>
+            
+            <button
+              onClick={resetTimer}
+              className="w-12 h-12 flex items-center justify-center bg-slate-900/40 hover:bg-slate-800 text-slate-500 hover:text-white rounded-2xl border border-slate-800/50 transition-all active:scale-90"
+            >
+              <RotateCcw size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Presets & Custom Options */}
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-1.5">
+              {presets.map((p) => (
+                <button
+                  key={p.value}
+                  onClick={() => handlePreset(p.value)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-950/40 border border-slate-800/40 text-[10px] font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <button 
+              onClick={() => setShowCustom(!showCustom)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all",
+                showCustom ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20" : "bg-slate-950/40 border border-slate-800/40 text-slate-400 hover:text-white"
+              )}
+            >
+              <Timer size={12} />
+              Custom
+            </button>
+          </div>
+
+          {showCustom && (
+            <motion.form 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              onSubmit={handleCustomSubmit}
+              className="flex gap-2"
+            >
+              <input 
+                type="number"
+                value={customVal}
+                onChange={(e) => setCustomVal(e.target.value)}
+                className="flex-1 bg-slate-950/60 border border-slate-800/60 rounded-xl px-4 py-2 text-xs font-bold text-white focus:outline-none focus:border-indigo-500/50 transition-all"
+                placeholder="Minutes..."
+              />
+              <button 
+                type="submit"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all"
+              >
+                Set
+              </button>
+            </motion.form>
+          )}
+        </div>
+
+        {/* Minimal Progress */}
+        <div className="w-full h-1 bg-slate-950 rounded-full overflow-hidden border border-slate-800/20">
+          <div 
+            className={cn(
+              "h-full transition-all duration-1000 ease-linear",
+              activeMode.progress
+            )}
+            style={{ width: `${progress}%` }}
+          ></div>
+        </div>
       </div>
     </div>
   );

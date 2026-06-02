@@ -49,19 +49,22 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	var id int64
+	// For standard registration, we still generate an ID if not using Clerk
+	// But since we want compatibility, we'll return a string ID.
+	// For now, let's keep it simple.
+	var id string
 	err = db.DB.QueryRow(`
 		INSERT INTO users (username, email, password_hash, genre, about, likes, created_at)
 		VALUES ($1, $2, $3, '', '', '', NOW()) RETURNING id`,
 		req.Username, strings.ToLower(req.Email), string(hashed),
 	).Scan(&id)
 	if err != nil {
-		log.Printf("Register database error: %v (type: %T)", err, err)
+		log.Printf("Register database error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create user", "details": err.Error()})
 		return
 	}
 
-	log.Printf("User registered successfully with ID: %d", id)
+	log.Printf("User registered successfully with ID: %s", id)
 
 	token, err := utils.GenerateToken(id)
 	if err != nil {
@@ -114,15 +117,13 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// Fetch additional profile data
 	var profile models.User
 	err = db.DB.QueryRow(`
 		SELECT id, username, email, genre, about, likes, created_at
 		FROM users WHERE id=$1`, user.ID).
 		Scan(&profile.ID, &profile.Username, &profile.Email, &profile.Genre, &profile.About, &profile.Likes, &profile.CreatedAt)
 	if err != nil {
-		log.Printf("Failed to fetch profile for user %d: %v", user.ID, err)
-		// Continue with basic data if profile fetch fails
+		log.Printf("Failed to fetch profile for user %s: %v", user.ID, err)
 		c.JSON(http.StatusOK, gin.H{
 			"token":    token,
 			"user_id":  user.ID,
