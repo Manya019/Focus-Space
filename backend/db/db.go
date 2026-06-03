@@ -55,13 +55,7 @@ func ConnectDB() error {
 		return err
 	}
 
-	// Initialize schema
-	if err := initSchema(); err != nil {
-		log.Printf("[DB] Schema initialization failed: %v", err)
-		return err
-	}
-
-	log.Println("[DB] All migrations completed successfully")
+	log.Println("[DB] Connected successfully!")
 	return nil
 }
 
@@ -150,6 +144,7 @@ func initSchema() error {
 		{"Add reading_logs target_pages column", `ALTER TABLE reading_logs ADD COLUMN IF NOT EXISTS target_pages INTEGER DEFAULT 0`},
 		{"Add reading_logs reflection column", `ALTER TABLE reading_logs ADD COLUMN IF NOT EXISTS reflection TEXT DEFAULT ''`},
 		{"Add reading_logs duration_minutes column", `ALTER TABLE reading_logs ADD COLUMN IF NOT EXISTS duration_minutes INTEGER DEFAULT 0`},
+		{"Add users avatar_url column", `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT ''`},
 		{"Create messages index", `CREATE INDEX IF NOT EXISTS idx_messages_channel_created ON messages(channel, created_at DESC)`},
 		{"Create messages reply index", `CREATE INDEX IF NOT EXISTS idx_messages_reply_to_id ON messages(reply_to_id)`},
 	}

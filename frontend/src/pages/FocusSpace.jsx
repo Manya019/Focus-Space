@@ -522,7 +522,11 @@ export default function FocusSpace({ user }) {
           isMinimized ? "w-48" : "w-80",
           isZenMode && "pointer-events-none"
         )}
-        style={{ pointerEvents: isZenMode ? 'none' : 'auto' }}
+        style={{ 
+          pointerEvents: isZenMode ? 'none' : 'auto',
+          top: 0,
+          left: 0,
+        }}
       >
         <SessionPanel draft={draft} onSubmit={submitSession} isMinimized={isMinimized} onMinimize={() => setIsMinimized(!isMinimized)} logs={logs} user={safeUser} onLogsUpdate={(updated) => setLogs(updated.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)))} />
       </motion.div>

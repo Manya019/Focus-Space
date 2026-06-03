@@ -24,14 +24,23 @@ export default function Profile({ user, logout, onUserUpdate }) {
     getProfile(user.id)
       .then((profileData) => {
         setProfile(profileData);
-        if (profileData?.username === 'New User' && clerkDisplayName !== 'User') {
-          const syncedProfile = { ...profileData, username: clerkDisplayName };
+        // Sync Clerk profile data on first load
+        const needsSync = profileData?.username === 'New User' || 
+                         (user?.avatar && profileData?.avatar_url !== user.avatar);
+        
+        if (needsSync) {
+          const syncedProfile = { 
+            ...profileData, 
+            username: clerkDisplayName !== 'User' ? clerkDisplayName : profileData.username,
+            avatar_url: user?.avatar || profileData?.avatar_url
+          };
           setProfile(syncedProfile);
           updateProfile(user.id, {
-            username: clerkDisplayName,
+            username: syncedProfile.username,
             genre: profileData.genre || '',
             about: profileData.about || '',
             likes: profileData.likes || '',
+            avatar_url: user?.avatar || ''
           }).catch(() => {});
         }
       })

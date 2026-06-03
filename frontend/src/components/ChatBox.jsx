@@ -89,6 +89,7 @@ export default function ChatBox({
     const messageUser = (isMe && user) ? user : m.user;
     const displayName = messageUser?.username || 'Anonymous';
     const avatarLabel = displayName[0].toUpperCase();
+    const avatarUrl = messageUser?.avatar_url || messageUser?.avatar;
     const parent = m.reply_to_id ? byId.get(m.reply_to_id) : null;
     const parentUser = parent?.user?.id === user?.id && user ? user : parent?.user;
 
@@ -97,13 +98,17 @@ export default function ChatBox({
         <div className={cn("flex max-w-[80%] items-end gap-2", isMe ? "flex-row-reverse" : "flex-row")}>
           <div
             className={cn(
-              "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-lg shrink-0",
+              "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-lg shrink-0 overflow-hidden",
               isMe ? "bg-indigo-600" : "bg-slate-700",
               onUserClick && "cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-all"
             )}
             onClick={() => onUserClick?.(messageUser)}
           >
-            {avatarLabel}
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+            ) : (
+              avatarLabel
+            )}
           </div>
 
           <div className={cn("flex flex-col", isMe ? "items-end" : "items-start")}>

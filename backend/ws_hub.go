@@ -24,6 +24,7 @@ type Client struct {
 	PeerID          string
 	Username        string
 	Email           string
+	AvatarURL       string
 	Book            string
 	TargetPages     int
 	Channels        map[string]bool
@@ -153,6 +154,7 @@ func serveWs(hub *Hub, c *gin.Context) {
 	userID := ""
 	username := ""
 	email := ""
+	avatarURL := ""
 
 	token := c.Query("token")
 	peerID := c.Query("peer_id")
@@ -167,23 +169,25 @@ func serveWs(hub *Hub, c *gin.Context) {
 		if userID != "" {
 			var u models.User
 			err := db.DB.
-				QueryRow(`SELECT username, email FROM users WHERE id=$1`, userID).
-				Scan(&u.Username, &u.Email)
+				QueryRow(`SELECT username, email, avatar_url FROM users WHERE id=$1`, userID).
+				Scan(&u.Username, &u.Email, &u.AvatarURL)
 			if err == nil {
 				username = u.Username
 				email = u.Email
+				avatarURL = u.AvatarURL
 			}
 		}
 	}
 
 	client := &Client{
-		Conn:     conn,
-		Send:     make(chan []byte, 256),
-		UserID:   userID,
-		PeerID:   peerID,
-		Username: username,
-		Email:    email,
-		Channels: make(map[string]bool),
+		Conn:      conn,
+		Send:      make(chan []byte, 256),
+		UserID:    userID,
+		PeerID:    peerID,
+		Username:  username,
+		Email:     email,
+		AvatarURL: avatarURL,
+		Channels:  make(map[string]bool),
 	}
 
 	hub.register <- client
@@ -224,9 +228,11 @@ func serveWs(hub *Hub, c *gin.Context) {
 					wsMsg.CreatedAt = time.Now()
 				}
 				wsMsg.User = &models.WSUser{
-					ID:       client.UserID,
-					PeerID:   client.PeerID,
-					Username: client.Username,
+					ID:        client.UserID,
+					PeerID:    client.PeerID,
+					Username:  client.Username,
+					Email:     client.Email,
+					AvatarURL: client.AvatarURL,
 				}
 				msg, _ := json.Marshal(wsMsg)
 				hub.broadcast <- msg
@@ -239,9 +245,11 @@ func serveWs(hub *Hub, c *gin.Context) {
 					wsMsg.CreatedAt = time.Now()
 				}
 				wsMsg.User = &models.WSUser{
-					ID:       client.UserID,
-					PeerID:   client.PeerID,
-					Username: client.Username,
+					ID:        client.UserID,
+					PeerID:    client.PeerID,
+					Username:  client.Username,
+					Email:     client.Email,
+					AvatarURL: client.AvatarURL,
 				}
 				msg, _ := json.Marshal(wsMsg)
 				hub.broadcast <- msg
@@ -285,9 +293,11 @@ func serveWs(hub *Hub, c *gin.Context) {
 
 					if target != nil {
 						wsMsg.User = &models.WSUser{
-							ID:       client.UserID,
-							PeerID:   client.PeerID,
-							Username: client.Username,
+							ID:        client.UserID,
+							PeerID:    client.PeerID,
+							Username:  client.Username,
+							Email:     client.Email,
+							AvatarURL: client.AvatarURL,
 						}
 
 						msg, _ := json.Marshal(wsMsg)
@@ -298,9 +308,11 @@ func serveWs(hub *Hub, c *gin.Context) {
 					}
 				} else {
 					wsMsg.User = &models.WSUser{
-						ID:       client.UserID,
-						PeerID:   client.PeerID,
-						Username: client.Username,
+						ID:        client.UserID,
+						PeerID:    client.PeerID,
+						Username:  client.Username,
+						Email:     client.Email,
+						AvatarURL: client.AvatarURL,
 					}
 					msg, _ := json.Marshal(wsMsg)
 					hub.broadcast <- msg
@@ -327,6 +339,8 @@ func (h *Hub) broadcastPresence() {
 				ID:          c.UserID,
 				PeerID:      c.PeerID,
 				Username:    c.Username,
+				Email:       c.Email,
+				AvatarURL:   c.AvatarURL,
 				Book:        c.Book,
 				TargetPages: c.TargetPages,
 			})

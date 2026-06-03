@@ -10,6 +10,7 @@ type User struct {
 	Genre        string    `json:"genre" db:"genre"`
 	About        string    `json:"about" db:"about"`
 	Likes        string    `json:"likes" db:"likes"`
+	AvatarURL    string    `json:"avatar_url" db:"avatar_url"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 }
 

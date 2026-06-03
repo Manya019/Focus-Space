@@ -31,6 +31,7 @@ type WSUser struct {
 	PeerID      string `json:"peer_id,omitempty"`
 	Username    string `json:"username"`
 	Email       string `json:"email"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
 	Book        string `json:"book,omitempty"`
 	TargetPages int    `json:"target_pages,omitempty"`
 }
