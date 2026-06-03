@@ -45,6 +45,7 @@ export default function FocusSpace({ user }) {
   const containerRef = useRef(null);
   const boxRef = useRef(null);
   const audioRef = useRef(null);
+  const [sessionPanelPosition, setSessionPanelPosition] = useState({ x: 0, y: 0 });
 
 
 
@@ -105,6 +106,33 @@ export default function FocusSpace({ user }) {
 
   const draft = useSessionDraft();
   const { workDuration, timeLeft, mode } = usePomo();
+  const isRightPanelOpen = (isSidebarOpen || showPalettePanel) && !isZenMode;
+
+  useEffect(() => {
+    const placeSessionPanel = () => {
+      const panelWidth = isMinimized ? 192 : 320;
+      const panelHeight = isMinimized ? 88 : 520;
+      const reservedRight = isRightPanelOpen && window.innerWidth >= 1024 ? 480 : 0;
+      const maxX = Math.max(24, window.innerWidth - reservedRight - panelWidth - 32);
+      const maxY = Math.max(120, window.innerHeight - panelHeight - 32);
+
+      setSessionPanelPosition(prev => {
+        const defaultX = Math.min(Math.max(32, (window.innerWidth - reservedRight - panelWidth) / 2), maxX);
+        const defaultY = Math.min(Math.max(144, (window.innerHeight - panelHeight) / 2 + 80), maxY);
+        const nextX = prev.x || defaultX;
+        const nextY = prev.y || defaultY;
+
+        return {
+          x: Math.min(Math.max(24, nextX), maxX),
+          y: Math.min(Math.max(120, nextY), maxY),
+        };
+      });
+    };
+
+    placeSessionPanel();
+    window.addEventListener('resize', placeSessionPanel);
+    return () => window.removeEventListener('resize', placeSessionPanel);
+  }, [isMinimized, isRightPanelOpen]);
 
   const soundscapes = [
     { id: 'forest', name: 'Forest', url: 'https://www.soundjay.com/nature/forest-birds-01.mp3' },
@@ -391,7 +419,12 @@ export default function FocusSpace({ user }) {
       )}
 
       {/* Main Focus Area */}
-      <div className="h-full w-full flex items-center justify-center p-8">
+      <div
+        className={cn(
+          "h-full w-full flex items-center justify-center p-8 transition-[padding] duration-300",
+          isRightPanelOpen && "lg:pr-[480px]"
+        )}
+      >
         <AnimatePresence>
           {isZenMode && (
             <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="flex flex-col items-center gap-12">
@@ -411,7 +444,7 @@ export default function FocusSpace({ user }) {
               initial={{ x: -300, opacity: 0 }} 
               animate={{ x: 0, opacity: 1 }} 
               exit={{ x: -300, opacity: 0 }} 
-              className="absolute left-8 top-32 w-64 max-h-[30%] bg-black/40 backdrop-blur-2xl border border-white/10 rounded-[24px] p-4 shadow-xl overflow-y-auto z-40 scrollbar-thin scrollbar-thumb-white/10"
+              className="absolute left-8 top-32 bottom-20 w-64 bg-black/40 backdrop-blur-2xl border border-white/10 rounded-[24px] p-4 shadow-xl overflow-y-auto z-40 scrollbar-thin scrollbar-thumb-white/10"
             >
               <PresenceList presence={presence} />
             </motion.div>
@@ -421,9 +454,9 @@ export default function FocusSpace({ user }) {
               initial={{ x: 400, opacity: 0 }} 
               animate={{ x: 0, opacity: 1 }} 
               exit={{ x: 400, opacity: 0 }} 
-              className="absolute right-8 top-32 bottom-20 w-[400px] flex flex-col z-40"
+              className="absolute right-8 top-32 bottom-8 w-[400px] max-w-[calc(100vw-4rem)] flex flex-col z-40"
             >
-              <div className="flex-1 h-full bg-black/40 backdrop-blur-2xl border border-white/10 rounded-[32px] p-6 shadow-2xl overflow-hidden flex flex-col">
+              <div className="flex-1 min-h-0 bg-black/40 backdrop-blur-2xl border border-white/10 rounded-[32px] p-4 shadow-2xl overflow-hidden flex flex-col">
                 <ChatBox channel="reading_room" user={safeUser} messages={messages} onSend={(text, replyTo) => sendMessage("reading_room", { body: text, reply_to_id: replyTo?.id ?? null })} onDelete={(m) => { if (m?.id && m.user?.id === safeUser.id) { setMessages(prev => prev.filter(x => x.id !== m.id)); sendDelete('reading_room', m.id); } }} />
               </div>
             </motion.div>
@@ -437,9 +470,17 @@ export default function FocusSpace({ user }) {
         dragMomentum={false}
         dragElastic={0.05}
         dragConstraints={containerRef}
-        initial={{ x: (window.innerWidth - 320) / 2, y: (window.innerHeight - 300) / 2 + 50 }}
+        dragTransition={{ bounceStiffness: 600, bounceDamping: 30 }}
+        onDragEnd={(_, info) => {
+          setSessionPanelPosition(prev => ({
+            x: prev.x + info.offset.x,
+            y: prev.y + info.offset.y,
+          }));
+        }}
         layout
         animate={{
+          x: sessionPanelPosition.x,
+          y: sessionPanelPosition.y,
           opacity: isZenMode ? 0 : 1,
           scale: isZenMode ? 0.95 : 1,
           pointerEvents: isZenMode ? "none" : "auto"
@@ -462,9 +503,9 @@ export default function FocusSpace({ user }) {
             initial={{ x: 400 }} 
             animate={{ x: 0 }} 
             exit={{ x: 400 }} 
-            className="absolute right-8 top-32 bottom-20 w-[400px] flex flex-col gap-6 z-40"
+            className="absolute right-8 top-32 bottom-8 w-[400px] max-w-[calc(100vw-4rem)] flex flex-col gap-6 z-40"
           >
-            <div className="flex-1 bg-black/40 backdrop-blur-2xl border border-white/10 rounded-[32px] p-6 shadow-2xl overflow-hidden flex flex-col">
+            <div className="flex-1 min-h-0 bg-black/40 backdrop-blur-2xl border border-white/10 rounded-[32px] p-6 shadow-2xl overflow-hidden flex flex-col">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-bold text-white flex items-center gap-2">
                   <Palette size={18} className="text-indigo-400" />

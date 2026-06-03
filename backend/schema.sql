@@ -8,6 +8,10 @@ CREATE TABLE IF NOT EXISTS users (
     genre TEXT DEFAULT '',
     about TEXT DEFAULT '',
     likes TEXT DEFAULT '',
+    xp INTEGER DEFAULT 0,
+    level INTEGER DEFAULT 1,
+    streak INTEGER DEFAULT 0,
+    last_activity TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -18,6 +22,7 @@ CREATE TABLE IF NOT EXISTS reading_logs (
     pages_read INTEGER NOT NULL,
     target_pages INTEGER DEFAULT 0,
     reflection TEXT DEFAULT '',
+    duration_minutes INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

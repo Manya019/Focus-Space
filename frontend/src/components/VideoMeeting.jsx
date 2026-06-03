@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
+import { X } from 'lucide-react';
 import { getWsPeerId, sendMessage } from '../services/ws';
 import { cn } from '../lib/utils';
 
@@ -27,6 +28,8 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
     // Google Meet style states (pinning and fullscreen display)
     const [pinnedUserId, setPinnedUserId] = useState(null);
     const [isFullScreen, setIsFullScreen] = useState(false);
+    const [isMinimized, setIsMinimized] = useState(false);
+    const [connectionStatus, setConnectionStatus] = useState('Waiting for peer');
 
     const localVideoRef = useRef(null);
     const localPeerId = useRef(getWsPeerId());
@@ -56,6 +59,7 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
                 const meteredIceServers = await response.json();
                 if (Array.isArray(meteredIceServers) && meteredIceServers.length > 0) {
                     setIceServers(meteredIceServers);
+                    console.log('Metered TURN credentials loaded');
                 }
             } catch (err) {
                 console.warn('Failed to load Metered TURN credentials; using STUN fallback:', err);
@@ -179,6 +183,8 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
         setIsVideoEnabled(true);
         setPinnedUserId(null);
         setIsFullScreen(false);
+        setIsMinimized(false);
+        setConnectionStatus('Waiting for peer');
     };
 
     const handleApprove = (requesterId) => {
@@ -266,14 +272,19 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
 
         pc.onconnectionstatechange = () => {
             console.log(`Peer ${targetUsername || targetPeerId} connection state:`, pc.connectionState);
+            setConnectionStatus(pc.connectionState);
         };
 
         pc.oniceconnectionstatechange = () => {
             console.log(`Peer ${targetUsername || targetPeerId} ICE state:`, pc.iceConnectionState);
+            if (pc.iceConnectionState === 'failed') {
+                setConnectionStatus('ICE failed');
+            }
         };
 
         pc.ontrack = (event) => {
             const remoteStream = event.streams[0];
+            setConnectionStatus('connected');
             setPeers(prev => ({
                 ...prev,
                 [targetPeerId]: {
@@ -415,6 +426,66 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
         return () => cleanupResources();
     }, []);
 
+    if (isMinimized && (isInMeeting || waitingForApproval)) {
+        return (
+            <div className="fixed right-5 bottom-5 z-[9999] w-80 max-w-[calc(100vw-2.5rem)] bg-black/90 border border-white/10 rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+                    <div className="min-w-0">
+                        <p className="text-xs font-bold text-white truncate">{meetingCode || 'Meeting'}</p>
+                        <p className="text-[10px] text-slate-400 truncate">{waitingForApproval ? 'Waiting for host' : connectionStatus}</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => setIsMinimized(false)}
+                            className="p-2 rounded-full text-slate-300 hover:text-white hover:bg-white/10 transition"
+                            title="Expand meeting"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M9 21H3v-6"/><path d="M14 10 3 21"/></svg>
+                        </button>
+                        <button
+                            onClick={leaveMeeting}
+                            className="p-2 rounded-full text-red-300 hover:text-white hover:bg-red-600 transition"
+                            title="Leave meeting"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 p-3">
+                    <div className="relative aspect-video rounded-2xl overflow-hidden bg-slate-900 border border-white/10">
+                        <video
+                            ref={localVideoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className="w-full h-full object-cover transform scale-x-[-1]"
+                        />
+                        <span className="absolute left-2 bottom-1.5 text-[10px] text-white bg-black/60 px-2 py-0.5 rounded-full">You</span>
+                    </div>
+                    {Object.values(peers).slice(0, 1).map(peer => (
+                        <div key={peer.id} className="relative aspect-video rounded-2xl overflow-hidden bg-slate-900 border border-white/10">
+                            <video
+                                autoPlay
+                                playsInline
+                                ref={el => {
+                                    if (el && peer.stream) el.srcObject = peer.stream;
+                                }}
+                                className="w-full h-full object-cover"
+                            />
+                            <span className="absolute left-2 bottom-1.5 text-[10px] text-white bg-black/60 px-2 py-0.5 rounded-full truncate max-w-[110px]">{peer.username || 'Peer'}</span>
+                        </div>
+                    ))}
+                    {Object.keys(peers).length === 0 && (
+                        <div className="aspect-video rounded-2xl bg-slate-900 border border-white/10 flex items-center justify-center text-[10px] text-slate-500">
+                            No peer yet
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
             {!isInMeeting && !waitingForApproval ? (
@@ -518,6 +589,13 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
                             <span className="text-white/30 text-xs">Share this code</span>
                         </div>
                         <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setIsMinimized(true)}
+                                className="text-slate-400 hover:text-white p-2 rounded-full hover:bg-white/5 transition"
+                                title="Minimize meeting"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>
+                            </button>
                             {/* Fullscreen Expand / Collapse Button */}
                             <button
                                 onClick={() => setIsFullScreen(!isFullScreen)}

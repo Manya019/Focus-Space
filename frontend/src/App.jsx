@@ -34,7 +34,7 @@ export default function App({ isAuthEnabled }) {
       id: clerkUser.id,
       token: clerkUser.id,
       name: clerkUser.fullName || clerkUser.username || 'User',
-      username: clerkUser.username || clerkUser.firstName || 'User',
+      username: clerkUser.fullName || clerkUser.username || clerkUser.firstName || 'User',
       email: clerkUser.primaryEmailAddress?.emailAddress,
       avatar: clerkUser.imageUrl,
     };

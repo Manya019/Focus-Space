@@ -40,6 +40,20 @@ func ConnectDB() error {
 		return err
 	}
 
+	migrations := []string{
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 0`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS level INTEGER DEFAULT 1`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS streak INTEGER DEFAULT 0`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_activity TIMESTAMP WITH TIME ZONE`,
+		`ALTER TABLE reading_logs ADD COLUMN IF NOT EXISTS duration_minutes INTEGER DEFAULT 0`,
+	}
+
+	for _, migration := range migrations {
+		if _, err = DB.Exec(migration); err != nil {
+			return err
+		}
+	}
+
 	// log.Println("connected to postgres")
 	return nil
 }

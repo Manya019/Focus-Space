@@ -44,7 +44,7 @@ export default function ChatBox({
 }) {
   const [replyTo, setReplyTo] = useState(null);
   const [messageText, setMessageText] = useState('');
-  const endRef = useRef();
+  const listRef = useRef(null);
 
   const { roots, byId } = useMemo(() => {
     const byId = new Map();
@@ -63,7 +63,11 @@ export default function ChatBox({
   }, [messages]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!listRef.current) return;
+    listRef.current.scrollTo({
+      top: listRef.current.scrollHeight,
+      behavior: 'smooth',
+    });
   }, [messages]);
 
   const handleSendMessage = () => {
@@ -190,7 +194,7 @@ export default function ChatBox({
 
   return (
     <div className="flex flex-col h-full bg-slate-950/50">
-      <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
+      <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto px-6 py-4 custom-scrollbar">
         {roots.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4">
             <div className="w-16 h-16 rounded-3xl bg-slate-900 flex items-center justify-center border border-slate-800 shadow-inner">
@@ -204,7 +208,6 @@ export default function ChatBox({
         ) : (
           renderMessagesWithDates()
         )}
-        <div ref={endRef} />
       </div>
 
       {!readOnly && (

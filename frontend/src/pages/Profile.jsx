@@ -15,9 +15,27 @@ export default function Profile({ user, logout, onUserUpdate }) {
   const [notifications, setNotifications] = useState({ enabled: false, notify_time: '09:00' });
   const [showSettings, setShowSettings] = useState(false);
 
+  const clerkDisplayName = user?.name || user?.username || 'User';
+  const profileUsername = profile?.username && profile.username !== 'New User' ? profile.username : '';
+  const displayName = profileUsername || clerkDisplayName;
+
   useEffect(() => {
     if (!user?.id) return;
-    getProfile(user.id).then(setProfile).catch(() => setProfile(null));
+    getProfile(user.id)
+      .then((profileData) => {
+        setProfile(profileData);
+        if (profileData?.username === 'New User' && clerkDisplayName !== 'User') {
+          const syncedProfile = { ...profileData, username: clerkDisplayName };
+          setProfile(syncedProfile);
+          updateProfile(user.id, {
+            username: clerkDisplayName,
+            genre: profileData.genre || '',
+            about: profileData.about || '',
+            likes: profileData.likes || '',
+          }).catch(() => {});
+        }
+      })
+      .catch(() => setProfile(null));
     getNotifications(user.id).then(setNotifications).catch(() => {});
     
     fetchLogs(user.id).then((logs) => {
@@ -28,7 +46,7 @@ export default function Profile({ user, logout, onUserUpdate }) {
       const totalBooks = new Set(logs.map(log => log.book_name)).size;
       setStats({ sessions, totalPages, totalBooks, totalMinutes });
     });
-  }, [user]);
+  }, [user, clerkDisplayName]);
 
   const handleSave = async (values) => {
     await updateProfile(user.id, values);
@@ -73,9 +91,17 @@ export default function Profile({ user, logout, onUserUpdate }) {
           
           <div className="relative z-10 flex flex-col md:flex-row gap-8 items-center md:items-start">
             <div className="relative">
-              <div className="w-32 h-32 rounded-[32px] bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-4xl font-black shadow-2xl shadow-indigo-500/20">
-                {(profile?.username || user.username || 'U')[0].toUpperCase()}
-              </div>
+              {user.avatar ? (
+                <img
+                  src={user.avatar}
+                  alt=""
+                  className="w-32 h-32 rounded-[32px] object-cover shadow-2xl shadow-indigo-500/20 border border-white/10"
+                />
+              ) : (
+                <div className="w-32 h-32 rounded-[32px] bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-4xl font-black shadow-2xl shadow-indigo-500/20">
+                  {displayName[0].toUpperCase()}
+                </div>
+              )}
               <div className="absolute -bottom-2 -right-2 bg-slate-900 border-4 border-slate-900 rounded-2xl p-2 shadow-xl">
                  <Trophy size={20} className="text-amber-400" />
               </div>
@@ -83,7 +109,7 @@ export default function Profile({ user, logout, onUserUpdate }) {
 
             <div className="flex-1 text-center md:text-left space-y-4 w-full">
               <div>
-                <h1 className="text-4xl font-serif font-black text-white tracking-tight">{profile?.username || user.username}</h1>
+                <h1 className="text-4xl font-serif font-black text-white tracking-tight">{displayName}</h1>
               </div>
               
               <div className="flex flex-wrap gap-3 justify-center md:justify-start">
