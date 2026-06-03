@@ -22,6 +22,11 @@ func (ns *NotificationScheduler) Start() {
 	// Check every minute for users who need notifications
 	ticker := time.NewTicker(1 * time.Minute)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[Scheduler] PANIC recovered: %v", r)
+			}
+		}()
 		for range ticker.C {
 			ns.checkAndSendNotifications()
 		}
@@ -29,6 +34,12 @@ func (ns *NotificationScheduler) Start() {
 }
 
 func (ns *NotificationScheduler) checkAndSendNotifications() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[Scheduler] PANIC in checkAndSendNotifications: %v", r)
+		}
+	}()
+
 	// Check if DB is ready
 	if db.DB == nil {
 		log.Println("[Scheduler] DB not initialized yet, skipping notification check")
@@ -70,7 +81,11 @@ func (ns *NotificationScheduler) checkAndSendNotifications() {
 
 		// Count unread books (books not in reading logs or with incomplete logs)
 		var unreadBooks int
-		err = ns.db.QueryRow(`
+		if db.DB == nil {
+			log.Printf("[Scheduler] DB became nil while processing notifications, skipping for user %s", userID)
+			continue
+		}
+		err = db.DB.QueryRow(`
 			SELECT COUNT(*) FROM books b
 			WHERE NOT EXISTS (
 				SELECT 1 FROM reading_logs rl
