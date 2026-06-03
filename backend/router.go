@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"readingroom/db"
 	"readingroom/handlers"
 	"time"
 
@@ -44,6 +45,19 @@ func SetupRouter(hub *Hub) *gin.Engine {
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
+
+	// Health check endpoints (used by Render and monitoring)
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
+	r.GET("/health/db", func(c *gin.Context) {
+		if err := db.CheckDB(); err != nil {
+			c.JSON(500, gin.H{"status": "error", "message": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "ok", "database": "connected"})
+	})
 
 	api := r.Group("/")
 	{

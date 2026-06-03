@@ -117,10 +117,15 @@ export default function FocusSpace({ user }) {
   useEffect(() => {
     const placeSessionPanel = () => {
       const panelWidth = isMinimized ? 192 : 320;
+      const panelHeight = isMinimized ? 88 : 520;
       const reservedRight = isRightPanelOpen && window.innerWidth >= 1024 ? 480 : 0;
       const availableWidth = Math.max(panelWidth + 48, window.innerWidth - reservedRight);
+      
+      // Position below Pomodoro timer when minimized, otherwise centered
+      const pomodoroBottomY = isMinimized ? 205 : 260;
       const maxX = Math.max(24, availableWidth - panelWidth - 32);
-      const y = Math.min(205, Math.max(120, window.innerHeight - 140));
+      const maxY = Math.max(120, window.innerHeight - panelHeight - 32);
+      const y = Math.min(pomodoroBottomY, maxY);
 
       setSessionPanelPosition({
         x: Math.min(Math.max(24, (availableWidth - panelWidth) / 2), maxX),
@@ -474,19 +479,23 @@ export default function FocusSpace({ user }) {
         ref={boxRef} 
         drag 
         dragMomentum={false}
-        dragElastic={0.05}
-        dragConstraints={containerRef}
+        dragElastic={0.15}
         dragTransition={{ bounceStiffness: 600, bounceDamping: 30 }}
         onDragEnd={(_, info) => {
           const panelWidth = isMinimized ? 192 : 320;
           const panelHeight = isMinimized ? 88 : 520;
           const reservedRight = isRightPanelOpen && window.innerWidth >= 1024 ? 480 : 0;
-          const maxX = Math.max(24, window.innerWidth - reservedRight - panelWidth - 32);
-          const maxY = Math.max(120, window.innerHeight - panelHeight - 32);
+          
+          // Calculate safe boundaries
+          const minX = 24;
+          const maxX = Math.max(minX, window.innerWidth - reservedRight - panelWidth - 32);
+          const minY = 120;
+          const maxY = Math.max(minY, window.innerHeight - panelHeight - 32);
 
+          // Apply constraints to new position
           setSessionPanelPosition(prev => ({
-            x: Math.min(Math.max(24, prev.x + info.offset.x), maxX),
-            y: Math.min(Math.max(120, prev.y + info.offset.y), maxY),
+            x: Math.max(minX, Math.min(prev.x + info.offset.x, maxX)),
+            y: Math.max(minY, Math.min(prev.y + info.offset.y, maxY)),
           }));
         }}
         layout

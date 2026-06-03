@@ -21,14 +21,18 @@ func main() {
 		// log.Println("No .env file found, using environment variables")
 	}
 
-	if err := db.ConnectDB(); err != nil {
-		log.Fatalf("db connect failed: %v", err)
-	}
-
 	hub := NewHub()
 	go hub.run()
 
 	router := SetupRouter(hub)
+
+	// Try to connect to DB asynchronously with timeout
+	// Don't block server startup on DB connection
+	go func() {
+		if err := db.ConnectDB(); err != nil {
+			log.Printf("WARNING: db connect failed on startup: %v. Some features will be unavailable.", err)
+		}
+	}()
 
 	// Start notification scheduler
 	scheduler := utils.NewNotificationScheduler()
@@ -42,6 +46,7 @@ func main() {
 		}
 	}()
 
+	log.Println("Starting server...")
 	start(router)
 }
 
