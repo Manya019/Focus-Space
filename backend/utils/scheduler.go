@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"time"
@@ -11,13 +10,11 @@ import (
 
 type NotificationScheduler struct {
 	emailService *EmailService
-	db           *sql.DB
 }
 
 func NewNotificationScheduler() *NotificationScheduler {
 	return &NotificationScheduler{
 		emailService: NewEmailService(),
-		db:           db.DB,
 	}
 }
 
@@ -32,12 +29,23 @@ func (ns *NotificationScheduler) Start() {
 }
 
 func (ns *NotificationScheduler) checkAndSendNotifications() {
+	// Check if DB is ready
+	if db.DB == nil {
+		log.Println("[Scheduler] DB not initialized yet, skipping notification check")
+		return
+	}
+
+	if err := db.CheckDB(); err != nil {
+		log.Printf("[Scheduler] DB connection check failed: %v", err)
+		return
+	}
+
 	// Get current time
 	now := time.Now()
 	currentTime := fmt.Sprintf("%02d:%02d", now.Hour(), now.Minute())
 
 	// Find users who have notifications enabled for current time
-	rows, err := ns.db.Query(`
+	rows, err := db.DB.Query(`
 		SELECT u.id, u.username, u.email, n.notify_time
 		FROM users u
 		JOIN user_notifications n ON u.id = n.user_id

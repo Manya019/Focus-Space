@@ -85,8 +85,8 @@ func GetLogs(c *gin.Context) {
 		SELECT id,
 		       user_id,
 		       book_name,
-		       CAST(pages_read AS INTEGER),
-		       CAST(COALESCE(target_pages, 0) AS INTEGER),
+		       pages_read,
+		       COALESCE(target_pages, 0),
 		       COALESCE(reflection, ''),
 		       created_at
 		FROM reading_logs WHERE user_id=$1 ORDER BY created_at DESC`, uid)
@@ -100,20 +100,19 @@ func GetLogs(c *gin.Context) {
 	var logs []models.ReadingLog
 	for rows.Next() {
 		var l models.ReadingLog
-		var pagesRead, targetPages sql.NullInt64
+		var pagesRead sql.NullInt64
+		var targetPages int
 		if err := rows.Scan(&l.ID, &l.UserID, &l.BookName, &pagesRead, &targetPages, &l.Reflection, &l.CreatedAt); err != nil {
 			log.Printf("GetLogs scan failed for user %s: %v", uid, err)
 			// Skip corrupted rows instead of failing entire request
 			log.Printf("Skipping corrupted row for user %s", uid)
 			continue
 		}
-		// Handle NULL values
+		// Handle NULL pages_read
 		if pagesRead.Valid {
 			l.PagesRead = int(pagesRead.Int64)
 		}
-		if targetPages.Valid {
-			l.TargetPages = int(targetPages.Int64)
-		}
+		l.TargetPages = targetPages
 		logs = append(logs, l)
 	}
 

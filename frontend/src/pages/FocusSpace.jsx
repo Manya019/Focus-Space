@@ -45,7 +45,18 @@ export default function FocusSpace({ user }) {
   const containerRef = useRef(null);
   const boxRef = useRef(null);
   const audioRef = useRef(null);
-  const [sessionPanelPosition, setSessionPanelPosition] = useState({ x: 0, y: 0 });
+
+  // Initialize session panel position with a function to avoid (0,0) issue
+  const [sessionPanelPosition, setSessionPanelPosition] = useState(() => {
+    const panelWidth = 320;
+    const panelHeight = 88;
+    const availableWidth = Math.max(panelWidth + 48, typeof window !== 'undefined' ? window.innerWidth : 1024);
+    const maxX = Math.max(24, availableWidth - panelWidth - 32);
+    return {
+      x: Math.min(Math.max(24, (availableWidth - panelWidth) / 2), maxX),
+      y: 205,
+    };
+  });
 
 
 
@@ -504,13 +515,14 @@ export default function FocusSpace({ user }) {
           y: sessionPanelPosition.y,
           opacity: isZenMode ? 0 : 1,
           scale: isZenMode ? 0.95 : 1,
-          pointerEvents: isZenMode ? "none" : "auto"
         }}
         transition={{ type: 'spring', stiffness: 350, damping: 35 }}
         className={cn(
           "absolute z-40 cursor-grab active:cursor-grabbing hover:shadow-2xl",
-          isMinimized ? "w-48" : "w-80"
+          isMinimized ? "w-48" : "w-80",
+          isZenMode && "pointer-events-none"
         )}
+        style={{ pointerEvents: isZenMode ? 'none' : 'auto' }}
       >
         <SessionPanel draft={draft} onSubmit={submitSession} isMinimized={isMinimized} onMinimize={() => setIsMinimized(!isMinimized)} logs={logs} user={safeUser} onLogsUpdate={(updated) => setLogs(updated.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)))} />
       </motion.div>
