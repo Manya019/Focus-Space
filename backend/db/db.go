@@ -36,6 +36,10 @@ func ConnectDB() error {
 		return err
 	}
 
+	if _, err = DB.Exec(`ALTER TABLE books ADD COLUMN IF NOT EXISTS cover_url TEXT DEFAULT ''`); err != nil {
+		return err
+	}
+
 	// log.Println("connected to postgres")
 	return nil
 }

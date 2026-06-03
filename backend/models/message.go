@@ -14,19 +14,21 @@ type Message struct {
 }
 
 type WSMessage struct {
-	Type      string      `json:"type"`    // "chat", "presence", "join", "leave", "signal"
-	Channel   string      `json:"channel"` // "reading_room", "general"
-	Payload   interface{} `json:"payload,omitempty"`
-	User      *WSUser     `json:"user,omitempty"`
-	ID        int64       `json:"id,omitempty"`
-	ReplyToID *int64      `json:"reply_to_id,omitempty"`
-	Body      string      `json:"body,omitempty"`
-	CreatedAt time.Time   `json:"created_at,omitempty"`
-	TargetID  string      `json:"target_id,omitempty"` // For private signaling (WebRTC)
+	Type         string      `json:"type"`    // "chat", "presence", "join", "leave", "signal"
+	Channel      string      `json:"channel"` // "reading_room", "general"
+	Payload      interface{} `json:"payload,omitempty"`
+	User         *WSUser     `json:"user,omitempty"`
+	ID           int64       `json:"id,omitempty"`
+	ReplyToID    *int64      `json:"reply_to_id,omitempty"`
+	Body         string      `json:"body,omitempty"`
+	CreatedAt    time.Time   `json:"created_at,omitempty"`
+	TargetID     string      `json:"target_id,omitempty"` // For private signaling (WebRTC)
+	TargetPeerID string      `json:"target_peer_id,omitempty"`
 }
 
 type WSUser struct {
 	ID          string `json:"id"`
+	PeerID      string `json:"peer_id,omitempty"`
 	Username    string `json:"username"`
 	Email       string `json:"email"`
 	Book        string `json:"book,omitempty"`

@@ -18,6 +18,7 @@ type createBookRequest struct {
 	Title       string `json:"title" binding:"required"`
 	Author      string `json:"author" binding:"required"`
 	Description string `json:"description"`
+	CoverURL    string `json:"cover_url"`
 }
 
 type createReviewRequest struct {
@@ -30,7 +31,7 @@ type createReviewRequest struct {
 // GetBooks handles GET /books?q=query
 func GetBooks(c *gin.Context) {
 	search := strings.TrimSpace(c.Query("q"))
-	query := `SELECT id, title, author, description, created_at FROM books`
+	query := `SELECT id, title, author, description, COALESCE(cover_url, ''), created_at FROM books`
 	var rows *sql.Rows
 	var err error
 
@@ -52,7 +53,7 @@ func GetBooks(c *gin.Context) {
 	var books []models.Book
 	for rows.Next() {
 		var b models.Book
-		if err := rows.Scan(&b.ID, &b.Title, &b.Author, &b.Description, &b.CreatedAt); err != nil {
+		if err := rows.Scan(&b.ID, &b.Title, &b.Author, &b.Description, &b.CoverURL, &b.CreatedAt); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "scan failed"})
 			return
 		}
@@ -72,10 +73,10 @@ func CreateBook(c *gin.Context) {
 
 	var book models.Book
 	err := db.DB.QueryRow(`
-		INSERT INTO books (title, author, description, created_at)
-		VALUES ($1, $2, $3, NOW()) RETURNING id, title, author, description, created_at`,
-		req.Title, req.Author, req.Description,
-	).Scan(&book.ID, &book.Title, &book.Author, &book.Description, &book.CreatedAt)
+		INSERT INTO books (title, author, description, cover_url, created_at)
+		VALUES ($1, $2, $3, $4, NOW()) RETURNING id, title, author, description, COALESCE(cover_url, ''), created_at`,
+		req.Title, req.Author, req.Description, req.CoverURL,
+	).Scan(&book.ID, &book.Title, &book.Author, &book.Description, &book.CoverURL, &book.CreatedAt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create book"})
 		return

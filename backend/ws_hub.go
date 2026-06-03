@@ -21,6 +21,7 @@ type Client struct {
 	Conn            *websocket.Conn
 	Send            chan []byte
 	UserID          string
+	PeerID          string
 	Username        string
 	Email           string
 	Book            string
@@ -154,12 +155,13 @@ func serveWs(hub *Hub, c *gin.Context) {
 	email := ""
 
 	token := c.Query("token")
+	peerID := c.Query("peer_id")
 	if token != "" {
 		claims, err := utils.ParseToken(token)
 		if err == nil {
 			userID = claims.UserID
 		} else {
-			userID = token 
+			userID = token
 		}
 
 		if userID != "" {
@@ -178,6 +180,7 @@ func serveWs(hub *Hub, c *gin.Context) {
 		Conn:     conn,
 		Send:     make(chan []byte, 256),
 		UserID:   userID,
+		PeerID:   peerID,
 		Username: username,
 		Email:    email,
 		Channels: make(map[string]bool),
@@ -222,8 +225,8 @@ func serveWs(hub *Hub, c *gin.Context) {
 				}
 				wsMsg.User = &models.WSUser{
 					ID:       client.UserID,
+					PeerID:   client.PeerID,
 					Username: client.Username,
-					Email:    client.Email,
 				}
 				msg, _ := json.Marshal(wsMsg)
 				hub.broadcast <- msg
@@ -237,8 +240,8 @@ func serveWs(hub *Hub, c *gin.Context) {
 				}
 				wsMsg.User = &models.WSUser{
 					ID:       client.UserID,
+					PeerID:   client.PeerID,
 					Username: client.Username,
-					Email:    client.Email,
 				}
 				msg, _ := json.Marshal(wsMsg)
 				hub.broadcast <- msg
@@ -265,11 +268,15 @@ func serveWs(hub *Hub, c *gin.Context) {
 					}
 				}
 
-				if wsMsg.TargetID != "" {
+				if wsMsg.TargetPeerID != "" || wsMsg.TargetID != "" {
 					hub.mu.RLock()
 					var target *Client
 					for c := range hub.clients {
-						if c.UserID == wsMsg.TargetID {
+						if wsMsg.TargetPeerID != "" && c.PeerID == wsMsg.TargetPeerID {
+							target = c
+							break
+						}
+						if wsMsg.TargetPeerID == "" && c.UserID == wsMsg.TargetID {
 							target = c
 							break
 						}
@@ -279,8 +286,8 @@ func serveWs(hub *Hub, c *gin.Context) {
 					if target != nil {
 						wsMsg.User = &models.WSUser{
 							ID:       client.UserID,
+							PeerID:   client.PeerID,
 							Username: client.Username,
-							Email:    client.Email,
 						}
 
 						msg, _ := json.Marshal(wsMsg)
@@ -292,8 +299,8 @@ func serveWs(hub *Hub, c *gin.Context) {
 				} else {
 					wsMsg.User = &models.WSUser{
 						ID:       client.UserID,
+						PeerID:   client.PeerID,
 						Username: client.Username,
-						Email:    client.Email,
 					}
 					msg, _ := json.Marshal(wsMsg)
 					hub.broadcast <- msg
@@ -318,8 +325,8 @@ func (h *Hub) broadcastPresence() {
 		if c.Channels["reading_room"] && c.UserID != "" {
 			presence = append(presence, models.WSUser{
 				ID:          c.UserID,
+				PeerID:      c.PeerID,
 				Username:    c.Username,
-				Email:       c.Email,
 				Book:        c.Book,
 				TargetPages: c.TargetPages,
 			})

@@ -84,7 +84,6 @@ export default function Profile({ user, logout, onUserUpdate }) {
             <div className="flex-1 text-center md:text-left space-y-4 w-full">
               <div>
                 <h1 className="text-4xl font-serif font-black text-white tracking-tight">{profile?.username || user.username}</h1>
-                <p className="text-slate-400 font-medium">{user.email}</p>
               </div>
               
               <div className="flex flex-wrap gap-3 justify-center md:justify-start">

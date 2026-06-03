@@ -73,6 +73,52 @@ export default function MusicWidget({ audioRef, currentSoundscape, setCurrentSou
     return origin + '/';
   };
 
+  const persistSpotifyToken = (data) => {
+    if (!data?.access_token) return;
+    setSpotifyToken(data.access_token);
+    try {
+      localStorage.setItem('spotify_access_token', data.access_token);
+      if (data.refresh_token) {
+        localStorage.setItem('spotify_refresh_token', data.refresh_token);
+      }
+      if (data.expires_in) {
+        localStorage.setItem('spotify_expires_at', String(Date.now() + data.expires_in * 1000));
+      }
+    } catch (e) {
+      console.warn("Could not persist Spotify token:", e);
+    }
+  };
+
+  const refreshSpotifyToken = useCallback(async () => {
+    let refreshToken = '';
+    try {
+      refreshToken = localStorage.getItem('spotify_refresh_token') || '';
+    } catch (e) {
+      console.warn("Could not read Spotify refresh token:", e);
+    }
+
+    if (!refreshToken) return '';
+
+    const CLIENT_ID = localStorage.getItem('spotify_client_id') || import.meta.env.VITE_SPOTIFY_CLIENT_ID || '35a82869dfbd47df83c9a0c7c34d4004';
+    const response = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        client_id: CLIENT_ID,
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+      }),
+    });
+
+    if (!response.ok) return '';
+
+    const data = await response.json();
+    persistSpotifyToken(data);
+    return data.access_token || '';
+  }, []);
+
   // Spotify OAuth Redirect login (Authorization Code Flow with PKCE)
   const handleSpotifyLogin = async () => {
     const CLIENT_ID = spotifyClientId; 
@@ -131,11 +177,7 @@ export default function MusicWidget({ audioRef, currentSoundscape, setCurrentSou
             if (response.ok) {
               const data = await response.json();
               if (data.access_token) {
-                setSpotifyToken(data.access_token);
-                localStorage.setItem('spotify_access_token', data.access_token);
-                if (data.refresh_token) {
-                  localStorage.setItem('spotify_refresh_token', data.refresh_token);
-                }
+                persistSpotifyToken(data);
                 setActiveTab('spotify');
               }
             } else {
@@ -159,11 +201,22 @@ export default function MusicWidget({ audioRef, currentSoundscape, setCurrentSou
   const fetchRealSpotifyTrack = useCallback(async (token) => {
     if (!token) return;
     try {
-      const response = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
+      let activeToken = token;
+      let response = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
         headers: {
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${activeToken}`
         }
       });
+      if (response.status === 401) {
+        activeToken = await refreshSpotifyToken();
+        if (activeToken) {
+          response = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
+            headers: {
+              Authorization: `Bearer ${activeToken}`
+            }
+          });
+        }
+      }
       if (response.status === 204) {
         // Active session, but nothing playing
         setRealSpotifyData({ isNothingPlaying: true });
@@ -204,7 +257,7 @@ export default function MusicWidget({ audioRef, currentSoundscape, setCurrentSou
       console.error(e);
       setSpotifyError('Could not fetch Spotify status');
     }
-  }, []);
+  }, [refreshSpotifyToken]);
 
   // Sync isPlaying state with audioRef
   useEffect(() => {
@@ -223,6 +276,14 @@ export default function MusicWidget({ audioRef, currentSoundscape, setCurrentSou
     }, 5000);
     return () => clearInterval(interval);
   }, [spotifyToken, fetchRealSpotifyTrack]);
+
+  useEffect(() => {
+    if (!spotifyToken) return;
+    const interval = setInterval(() => {
+      refreshSpotifyToken().catch(() => {});
+    }, 45 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [spotifyToken, refreshSpotifyToken]);
 
   const handlePlayPause = () => {
     if (!audioRef || !audioRef.current) return;
@@ -305,6 +366,8 @@ export default function MusicWidget({ audioRef, currentSoundscape, setCurrentSou
     setSpotifyToken('');
     try {
       localStorage.removeItem('spotify_access_token');
+      localStorage.removeItem('spotify_refresh_token');
+      localStorage.removeItem('spotify_expires_at');
     } catch (e) {
       console.warn("localStorage write blocked by environment:", e);
     }

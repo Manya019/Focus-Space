@@ -9,6 +9,25 @@ if (!WS_BASE) {
   throw new Error('VITE_WS_URL is not defined. Set it in your deployment env and redeploy.');
 }
 
+const PEER_ID_KEY = 'reading_room_ws_peer_id';
+
+function createPeerId() {
+  if (crypto?.randomUUID) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+export function getWsPeerId() {
+  try {
+    const existing = sessionStorage.getItem(PEER_ID_KEY);
+    if (existing) return existing;
+    const peerId = createPeerId();
+    sessionStorage.setItem(PEER_ID_KEY, peerId);
+    return peerId;
+  } catch {
+    return createPeerId();
+  }
+}
+
 function normalizeWsBase(base) {
   const url = new URL(base, window.location.href);
 
@@ -31,6 +50,7 @@ function normalizeWsBase(base) {
 function buildWsUrl(token) {
   const url = normalizeWsBase(WS_BASE);
   if (token) url.searchParams.set('token', token);
+  url.searchParams.set('peer_id', getWsPeerId());
   return url.toString();
 }
 

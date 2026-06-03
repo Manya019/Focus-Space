@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { sendMessage } from '../services/ws';
+import { getWsPeerId, sendMessage } from '../services/ws';
 import { cn } from '../lib/utils';
 
 const VideoMeeting = ({ user, incomingSignal, onClose }) => {
@@ -10,6 +10,10 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
     const [peers, setPeers] = useState({}); // { [userId]: { connection, stream, username } }
     const [error, setError] = useState('');
     const [localStream, setLocalStream] = useState(null);
+    const [iceServers, setIceServers] = useState([
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:global.stun.twilio.com:3478' }
+    ]);
 
     // Permission State
     const [isCreator, setIsCreator] = useState(false);
@@ -25,18 +29,41 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
     const [isFullScreen, setIsFullScreen] = useState(false);
 
     const localVideoRef = useRef(null);
+    const localPeerId = useRef(getWsPeerId());
 
     // Refs to avoid closure staleness in callbacks
     const peersRef = useRef({});
     const meetingCodeRef = useRef('');
     const localStreamRef = useRef(null);
 
-    const rtcConfig = {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' }
-        ]
-    };
+    const rtcConfig = { iceServers };
+
+    useEffect(() => {
+        const loadMeteredIceServers = async () => {
+            const apiKey = import.meta.env.VITE_METERED_API_KEY;
+            const appName = import.meta.env.VITE_METERED_APP_NAME;
+            const region = import.meta.env.VITE_METERED_REGION;
+
+            if (!apiKey || !appName) return;
+
+            try {
+                const params = new URLSearchParams({ apiKey });
+                if (region) params.set('region', region);
+
+                const response = await fetch(`https://${appName}.metered.live/api/v1/turn/credentials?${params.toString()}`);
+                if (!response.ok) throw new Error(`Metered TURN request failed: ${response.status}`);
+
+                const meteredIceServers = await response.json();
+                if (Array.isArray(meteredIceServers) && meteredIceServers.length > 0) {
+                    setIceServers(meteredIceServers);
+                }
+            } catch (err) {
+                console.warn('Failed to load Metered TURN credentials; using STUN fallback:', err);
+            }
+        };
+
+        loadMeteredIceServers();
+    }, []);
 
     useEffect(() => {
         meetingCodeRef.current = meetingCode;
@@ -157,7 +184,7 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
     const handleApprove = (requesterId) => {
         sendMessage("reading_room", {
             type: "signal",
-            target_id: requesterId,
+            target_peer_id: requesterId,
             payload: { signalType: "join_response", status: "allowed", meetingCode: meetingCode }
         });
         setPendingRequests(prev => prev.filter(r => r.id !== requesterId));
@@ -166,7 +193,7 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
     const handleDeny = (requesterId) => {
         sendMessage("reading_room", {
             type: "signal",
-            target_id: requesterId,
+            target_peer_id: requesterId,
             payload: { signalType: "join_response", status: "denied", meetingCode: meetingCode }
         });
         setPendingRequests(prev => prev.filter(r => r.id !== requesterId));
@@ -212,8 +239,8 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
     };
 
     // Helper to create peer connection
-    const createPeerConnection = (targetUserId, targetUsername, initiator = false) => {
-        if (peersRef.current[targetUserId]) return peersRef.current[targetUserId].connection;
+    const createPeerConnection = (targetPeerId, targetUsername, initiator = false) => {
+        if (peersRef.current[targetPeerId]) return peersRef.current[targetPeerId].connection;
 
         const pc = new RTCPeerConnection(rtcConfig);
         pc.iceCandidatesQueue = [];
@@ -227,7 +254,7 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
             if (event.candidate) {
                 sendMessage("reading_room", {
                     type: "signal",
-                    target_id: targetUserId,
+                    target_peer_id: targetPeerId,
                     payload: {
                         signalType: "ice-candidate",
                         candidate: event.candidate,
@@ -237,27 +264,35 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
             }
         };
 
+        pc.onconnectionstatechange = () => {
+            console.log(`Peer ${targetUsername || targetPeerId} connection state:`, pc.connectionState);
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            console.log(`Peer ${targetUsername || targetPeerId} ICE state:`, pc.iceConnectionState);
+        };
+
         pc.ontrack = (event) => {
             const remoteStream = event.streams[0];
             setPeers(prev => ({
                 ...prev,
-                [targetUserId]: {
-                    ...prev[targetUserId],
+                [targetPeerId]: {
+                    ...prev[targetPeerId],
                     stream: remoteStream
                 }
             }));
         };
 
-        peersRef.current[targetUserId] = {
+        peersRef.current[targetPeerId] = {
             connection: pc,
             username: targetUsername,
-            id: targetUserId
+            id: targetPeerId
         };
 
         // Force update to render
         setPeers(prev => ({
             ...prev,
-            [targetUserId]: { connection: pc, stream: null, username: targetUsername, id: targetUserId }
+            [targetPeerId]: { connection: pc, stream: null, username: targetUsername, id: targetPeerId }
         }));
 
         return pc;
@@ -274,7 +309,9 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
         if (meetingCode && incomingCode !== meetingCode) return;
 
         // Ignore self
-        if (sender && sender.id === user.id) return;
+        const senderPeerId = sender?.peer_id || sender?.id;
+
+        if (senderPeerId && senderPeerId === localPeerId.current) return;
 
         const handleSignal = async () => {
             try {
@@ -284,8 +321,8 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
                     if (isCreator && incomingCode === meetingCode) {
                         console.log("Join request from:", sender?.username);
                         setPendingRequests(prev => {
-                            if (prev.find(r => r.id === sender.id)) return prev;
-                            return [...prev, sender];
+                            if (prev.find(r => r.id === senderPeerId)) return prev;
+                            return [...prev, { ...sender, id: senderPeerId }];
                         });
                     }
                     return;
@@ -313,13 +350,13 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
                 if (signalType === 'join_announce') {
                     // New peer joined, existing peer initiates offer
                     console.log("New peer joined:", sender?.username);
-                    const pc = createPeerConnection(sender.id, sender.username, true);
+                    const pc = createPeerConnection(senderPeerId, sender.username, true);
                     const offer = await pc.createOffer();
                     await pc.setLocalDescription(offer);
 
                     sendMessage("reading_room", {
                         type: "signal",
-                        target_id: sender.id,
+                        target_peer_id: senderPeerId,
                         payload: {
                             signalType: "offer",
                             sdp: offer,
@@ -328,14 +365,14 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
                     });
                 } else if (signalType === 'offer') {
                     console.log("Received offer from:", sender?.username);
-                    const pc = createPeerConnection(sender.id, sender.username, false);
+                    const pc = createPeerConnection(senderPeerId, sender.username, false);
                     await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
 
                     sendMessage("reading_room", {
                         type: "signal",
-                        target_id: sender.id,
+                        target_peer_id: senderPeerId,
                         payload: {
                             signalType: "answer",
                             sdp: answer,
@@ -346,13 +383,13 @@ const VideoMeeting = ({ user, incomingSignal, onClose }) => {
                     await processQueuedCandidates(pc);
                 } else if (signalType === 'answer') {
                     console.log("Received answer from:", sender?.username);
-                    const pc = peersRef.current[sender.id]?.connection;
+                    const pc = peersRef.current[senderPeerId]?.connection;
                     if (pc) {
                         await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
                         await processQueuedCandidates(pc);
                     }
                 } else if (signalType === 'ice-candidate') {
-                    const pc = peersRef.current[sender.id]?.connection;
+                    const pc = peersRef.current[senderPeerId]?.connection;
                     if (pc && payload.candidate) {
                         try {
                             if (pc.remoteDescription && pc.remoteDescription.type) {

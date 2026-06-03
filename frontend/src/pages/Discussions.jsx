@@ -138,7 +138,6 @@ export default function Discussions({ user }) {
       user: {
         id: safeUser.id,
         username: safeUser.username,
-        email: safeUser.email,
       },
     };
 
@@ -321,7 +320,6 @@ export default function Discussions({ user }) {
                 {(selectedUser.username || 'U')[0].toUpperCase()}
               </div>
               <h3 className="text-2xl font-bold text-white mb-1">{selectedUser.username || 'Anonymous User'}</h3>
-              <p className="text-indigo-400 text-sm font-medium mb-6">{selectedUser.email}</p>
               
               {userProfile ? (
                 <div className="w-full space-y-4 pt-6 border-t border-slate-800 text-left">

@@ -11,7 +11,7 @@ export default function BookReviews({ user }) {
   const [newReview, setNewReview] = useState({ rating: 5, text: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [newBook, setNewBook] = useState({ title: '', author: '', description: '' });
+  const [newBook, setNewBook] = useState({ title: '', author: '', description: '', cover_url: '' });
   const [showAddModal, setShowAddModal] = useState(false);
 
   // Open Library API search states
@@ -26,8 +26,28 @@ export default function BookReviews({ user }) {
   const fetchBooks = async (query = '') => {
     try {
       setLoading(true);
+      setError('');
       const data = await getBooks(query);
-      setBooks(Array.isArray(data) ? data : []);
+      const backendBooks = Array.isArray(data) ? data : [];
+      if (!query.trim()) {
+        setBooks(backendBooks);
+        return;
+      }
+
+      const apiBooks = await searchOpenLibrary(query.trim(), 8);
+      const existing = new Set(backendBooks.map(book => `${book.title}|${book.author}`.toLowerCase()));
+      const mergedApiBooks = apiBooks
+        .filter(book => !existing.has(`${book.title}|${book.author}`.toLowerCase()))
+        .map(book => ({
+          id: `ol-${book.openLibraryKey || book.title}-${book.author}`,
+          title: book.title,
+          author: book.author,
+          description: book.description,
+          cover_url: book.coverUrl,
+          isExternal: true,
+        }));
+
+      setBooks([...backendBooks, ...mergedApiBooks]);
     } catch (err) {
       setError('Failed to fetch books');
       setBooks([]);
@@ -45,6 +65,7 @@ export default function BookReviews({ user }) {
     if (!book || !book.id) return;
     setSelectedBook(book);
     setReviews([]);
+    if (book.isExternal) return;
     try {
       const data = await getReviews(book.id);
       setReviews(Array.isArray(data) ? data : []);
@@ -60,12 +81,13 @@ export default function BookReviews({ user }) {
       const createdBook = await createBook({ 
         title: newBook.title.trim(), 
         author: newBook.author.trim(),
-        description: newBook.description.trim() 
+        description: newBook.description.trim(),
+        cover_url: newBook.cover_url || ''
       });
       if (createdBook) {
         setBooks(prev => [createdBook, ...prev]);
         setShowAddModal(false);
-        setNewBook({ title: '', author: '', description: '' });
+        setNewBook({ title: '', author: '', description: '', cover_url: '' });
         setOlResults([]);
         setOlQuery('');
       }
@@ -86,7 +108,7 @@ export default function BookReviews({ user }) {
       });
       if (review) {
         // Ensure username is present for the new review
-        review.username = user.username || user.email;
+        review.username = user.username || 'User';
         setReviews(prev => [review, ...prev]);
         setNewReview({ rating: 5, text: '' });
       }
@@ -95,22 +117,42 @@ export default function BookReviews({ user }) {
     }
   };
 
+  const searchOpenLibrary = async (query, limit = 5) => {
+    const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=${limit}`);
+    const data = await res.json();
+    if (!data?.docs) return [];
+
+    return data.docs.map(doc => ({
+      title: doc.title,
+      author: doc.author_name ? doc.author_name.join(', ') : 'Unknown Author',
+      description: doc.first_sentence ? doc.first_sentence[0] : (doc.subject ? `A book about ${doc.subject.slice(0, 3).join(', ')}.` : ''),
+      coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : '',
+      openLibraryKey: doc.key,
+    }));
+  };
+
+  const getBookCover = (book) => book.cover_url || book.coverUrl || book.cover || '';
+
+  const persistExternalBook = async (book) => {
+    if (!book?.isExternal) return book;
+    const createdBook = await createBook({
+      title: book.title,
+      author: book.author,
+      description: book.description || '',
+      cover_url: getBookCover(book),
+    });
+    setBooks(prev => prev.map(item => item.id === book.id ? createdBook : item));
+    setSelectedBook(createdBook);
+    return createdBook;
+  };
+
   // Search Open Library API
   const handleOpenLibrarySearch = async (e) => {
     e.preventDefault();
     if (!olQuery.trim()) return;
     setOlLoading(true);
     try {
-      const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(olQuery.trim())}&limit=5`);
-      const data = await res.json();
-      if (data && data.docs) {
-        setOlResults(data.docs.map(doc => ({
-          title: doc.title,
-          author: doc.author_name ? doc.author_name.join(', ') : 'Unknown Author',
-          description: doc.first_sentence ? doc.first_sentence[0] : (doc.subject ? `A masterpiece about ${doc.subject.slice(0, 3).join(', ')}.` : ''),
-          coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : null
-        })));
-      }
+      setOlResults(await searchOpenLibrary(olQuery.trim(), 5));
     } catch (err) {
       console.error("Open Library search failed:", err);
     } finally {
@@ -122,7 +164,8 @@ export default function BookReviews({ user }) {
     setNewBook({
       title: book.title,
       author: book.author,
-      description: book.description
+      description: book.description,
+      cover_url: book.coverUrl || ''
     });
     setOlResults([]);
     setOlQuery('');
@@ -197,9 +240,16 @@ export default function BookReviews({ user }) {
                 {/* Book "Cover" Aesthetic */}
                 <div className="aspect-[3/4] bg-gradient-to-br from-slate-800 to-slate-950 p-8 flex flex-col justify-end relative overflow-hidden shrink-0">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 blur-3xl -mr-16 -mt-16 group-hover:bg-indigo-500/20 transition-all"></div>
-                  <Book className="text-slate-700 mb-4 group-hover:text-indigo-500/40 transition-colors" size={48} />
+                  {getBookCover(book) ? (
+                    <img src={getBookCover(book)} alt="" className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                  ) : (
+                    <Book className="text-slate-700 mb-4 group-hover:text-indigo-500/40 transition-colors" size={48} />
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent"></div>
+                  <div className="relative z-10">
                   <h3 className="text-xl font-black text-white leading-tight mb-2 line-clamp-2">{book.title}</h3>
                   <p className="text-indigo-400 font-bold text-sm">{book.author}</p>
+                  </div>
                 </div>
                 
                 <div className="p-6 flex flex-col flex-1">
@@ -238,9 +288,13 @@ export default function BookReviews({ user }) {
             {/* Left Column: Book Info */}
             <div className="md:w-2/5 bg-gradient-to-b from-indigo-950/20 to-slate-950 p-10 flex flex-col">
               <div className="mb-8">
-                <div className="w-12 h-12 bg-indigo-600/20 rounded-2xl flex items-center justify-center border border-indigo-500/20 mb-6">
-                  <Book className="text-indigo-400" size={24} />
-                </div>
+                {getBookCover(selectedBook) ? (
+                  <img src={getBookCover(selectedBook)} alt="" className="w-28 aspect-[3/4] object-cover rounded-2xl border border-white/10 shadow-2xl mb-6" />
+                ) : (
+                  <div className="w-12 h-12 bg-indigo-600/20 rounded-2xl flex items-center justify-center border border-indigo-500/20 mb-6">
+                    <Book className="text-indigo-400" size={24} />
+                  </div>
+                )}
                 <h2 className="text-3xl font-black text-white leading-tight mb-2 tracking-tight">{selectedBook.title}</h2>
                 <p className="text-xl font-bold text-indigo-400 mb-6">by {selectedBook.author}</p>
                 <div className="h-1 w-20 bg-indigo-600 rounded-full mb-8"></div>
@@ -258,6 +312,14 @@ export default function BookReviews({ user }) {
                   <MessageCircle size={16} />
                   <span className="text-xs">{reviews.length} community reviews</span>
                 </div>
+                {selectedBook.isExternal && (
+                  <button
+                    onClick={() => persistExternalBook(selectedBook)}
+                    className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all"
+                  >
+                    Add to Gallery to Review
+                  </button>
+                )}
               </div>
             </div>
 
@@ -294,7 +356,7 @@ export default function BookReviews({ user }) {
               </div>
 
               {/* Add Review Form */}
-              <div className="bg-slate-950/50 border border-slate-800 p-6 rounded-[32px] shrink-0">
+              <div className={cn("bg-slate-950/50 border border-slate-800 p-6 rounded-[32px] shrink-0", selectedBook.isExternal && "opacity-50 pointer-events-none")}>
                 <form onSubmit={handleReviewSubmit} className="space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Write a review</span>

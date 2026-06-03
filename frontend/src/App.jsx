@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { SignedIn, SignedOut, UserButton, useUser, SignInButton } from '@clerk/clerk-react';
+import React, { useEffect, useState } from 'react';
+import { SignedIn, SignedOut, UserButton, useUser, SignInButton, useClerk } from '@clerk/clerk-react';
 import { Menu, X, Users, BookOpen, MessageSquare, Star, LayoutDashboard, LogOut, ShieldAlert, Zap, ChevronLeft } from 'lucide-react';
 import LandingPage from './pages/LandingPage';
 import Profile from './pages/Profile';
@@ -20,6 +21,7 @@ const navItems = [
 
 export default function App({ isAuthEnabled }) {
   const clerk = isAuthEnabled ? useUser() : { user: null, isLoaded: true, isSignedIn: false };
+  const { signOut } = isAuthEnabled ? useClerk() : { signOut: null };
   const { user: clerkUser, isLoaded, isSignedIn } = clerk;
   
   const [view, setView] = useState('landing');
@@ -56,7 +58,7 @@ export default function App({ isAuthEnabled }) {
   const renderView = () => {
     switch (view) {
       case 'profile':
-        return <Profile user={user} logout={() => {}} onUserUpdate={() => {}} />;
+        return <Profile user={user} logout={() => signOut?.({ redirectUrl: '/' })} onUserUpdate={() => {}} />;
       case 'room':
         return <FocusSpace user={user} />;
       case 'discussions':

@@ -93,7 +93,7 @@ func GetMessages(c *gin.Context) {
 		}
 	}
 
-	q := "SELECT m.id, m.user_id, m.channel, m.body, m.reply_to_id, m.created_at, u.username, u.email " +
+	q := "SELECT m.id, m.user_id, m.channel, m.body, m.reply_to_id, m.created_at, u.username " +
 		"FROM messages m JOIN users u ON m.user_id = u.id " +
 		"WHERE m.channel = $1 ORDER BY m.created_at DESC LIMIT $2"
 	rows, err := db.DB.Query(q, channel, limit)
@@ -107,7 +107,7 @@ func GetMessages(c *gin.Context) {
 	var messages []models.Message
 	for rows.Next() {
 		var m models.Message
-		if err := rows.Scan(&m.ID, &m.UserID, &m.Channel, &m.Body, &m.ReplyToID, &m.CreatedAt, &m.Username, &m.Email); err != nil {
+		if err := rows.Scan(&m.ID, &m.UserID, &m.Channel, &m.Body, &m.ReplyToID, &m.CreatedAt, &m.Username); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "scan failed"})
 			return
 		}

@@ -83,7 +83,8 @@ export default function ChatBox({
     const isMe = m.user?.id === user?.id;
     const key = messageKey(m, index);
     const messageUser = (isMe && user) ? user : m.user;
-    const avatarLabel = (messageUser?.username || messageUser?.email || 'U')[0].toUpperCase();
+    const displayName = messageUser?.username || 'Anonymous';
+    const avatarLabel = displayName[0].toUpperCase();
     const parent = m.reply_to_id ? byId.get(m.reply_to_id) : null;
     const parentUser = parent?.user?.id === user?.id && user ? user : parent?.user;
 
@@ -104,7 +105,7 @@ export default function ChatBox({
           <div className={cn("flex flex-col", isMe ? "items-end" : "items-start")}>
             <div className="flex items-center gap-2 mb-1 px-1">
               <span className="text-[11px] font-medium text-slate-400">
-                {messageUser?.username || messageUser?.email || 'Anonymous'}
+                {displayName}
               </span>
               <span className="text-[10px] text-slate-500">{formatTime(m.created_at)}</span>
             </div>
