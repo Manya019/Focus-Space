@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
 
@@ -84,8 +85,8 @@ func GetLogs(c *gin.Context) {
 		SELECT id,
 		       user_id,
 		       book_name,
-		       pages_read,
-		       COALESCE(target_pages, 0),
+		       CAST(pages_read AS INTEGER),
+		       CAST(COALESCE(target_pages, 0) AS INTEGER),
 		       COALESCE(reflection, ''),
 		       created_at
 		FROM reading_logs WHERE user_id=$1 ORDER BY created_at DESC`, uid)
@@ -99,10 +100,19 @@ func GetLogs(c *gin.Context) {
 	var logs []models.ReadingLog
 	for rows.Next() {
 		var l models.ReadingLog
-		if err := rows.Scan(&l.ID, &l.UserID, &l.BookName, &l.PagesRead, &l.TargetPages, &l.Reflection, &l.CreatedAt); err != nil {
+		var pagesRead, targetPages sql.NullInt64
+		if err := rows.Scan(&l.ID, &l.UserID, &l.BookName, &pagesRead, &targetPages, &l.Reflection, &l.CreatedAt); err != nil {
 			log.Printf("GetLogs scan failed for user %s: %v", uid, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "scan failed", "details": err.Error()})
-			return
+			// Skip corrupted rows instead of failing entire request
+			log.Printf("Skipping corrupted row for user %s", uid)
+			continue
+		}
+		// Handle NULL values
+		if pagesRead.Valid {
+			l.PagesRead = int(pagesRead.Int64)
+		}
+		if targetPages.Valid {
+			l.TargetPages = int(targetPages.Int64)
 		}
 		logs = append(logs, l)
 	}
