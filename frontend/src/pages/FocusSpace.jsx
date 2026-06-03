@@ -509,7 +509,7 @@ export default function FocusSpace({ user }) {
             y: Math.max(minY, Math.min(prev.y + info.offset.y, maxY)),
           }));
         }}
-        layout
+        initial={{ x: sessionPanelPosition.x, y: sessionPanelPosition.y, opacity: 1 }}
         animate={{
           x: sessionPanelPosition.x,
           y: sessionPanelPosition.y,
@@ -518,7 +518,7 @@ export default function FocusSpace({ user }) {
         }}
         transition={{ type: 'spring', stiffness: 350, damping: 35 }}
         className={cn(
-          "absolute z-40 cursor-grab active:cursor-grabbing hover:shadow-2xl",
+          "fixed z-40 cursor-grab active:cursor-grabbing hover:shadow-2xl",
           isMinimized ? "w-48" : "w-80",
           isZenMode && "pointer-events-none"
         )}

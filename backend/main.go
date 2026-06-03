@@ -34,15 +34,6 @@ func main() {
 		}
 	}()
 
-	// Start notification scheduler with delay to allow DB connection
-	// This gives the async DB connection time to complete before scheduler runs
-	go func() {
-		time.Sleep(5 * time.Second) // Wait for DB to potentially connect
-		scheduler := utils.NewNotificationScheduler()
-		scheduler.Start()
-		log.Println("[Scheduler] Notification scheduler started")
-	}()
-
 	// Optional: simple reminder log (placeholder for scheduler/cron)
 	go func() {
 		for {

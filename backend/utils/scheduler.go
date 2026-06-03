@@ -40,14 +40,15 @@ func (ns *NotificationScheduler) checkAndSendNotifications() {
 		}
 	}()
 
-	// Check if DB is ready
+	// Triple-check DB is ready before any query
 	if db.DB == nil {
-		log.Println("[Scheduler] DB not initialized yet, skipping notification check")
+		// Silently skip - DB might reconnect on next tick
 		return
 	}
 
+	// Verify connection is still alive
 	if err := db.CheckDB(); err != nil {
-		log.Printf("[Scheduler] DB connection check failed: %v", err)
+		// Silently skip on this iteration
 		return
 	}
 
@@ -64,7 +65,7 @@ func (ns *NotificationScheduler) checkAndSendNotifications() {
 	`, currentTime)
 
 	if err != nil {
-		log.Printf("Error querying notifications: %v", err)
+		log.Printf("[Scheduler] Query failed: %v", err)
 		return
 	}
 	defer rows.Close()
