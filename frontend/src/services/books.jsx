@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { getBooks } from './api';
 
 export const searchBooks = async (query) => {
@@ -15,23 +14,26 @@ export const searchBooks = async (query) => {
       }));
     }
   } catch (error) {
-    console.warn('Error searching app books API, trying Google Books:', error.message || error);
+    console.warn('Error searching app books API, trying Open Library:', error.message || error);
   }
 
   try {
-    const response = await axios.get(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=5`);
-    if (response.data && response.data.items && response.data.items.length > 0) {
-      return response.data.items.map(item => ({
-        id: item.id,
-        title: item.volumeInfo.title,
-        author: item.volumeInfo.authors?.join(', ') || 'Unknown Author',
-        description: item.volumeInfo.description || '',
-        cover: item.volumeInfo.imageLinks?.thumbnail || '',
-        pageCount: item.volumeInfo.pageCount || 0,
-      }));
-    }
+    const response = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=5`);
+    if (!response.ok) throw new Error(`Open Library request failed: ${response.status}`);
+
+    const data = await response.json();
+    if (!data?.docs?.length) return [];
+
+    return data.docs.map(doc => ({
+      id: `ol-${doc.key || doc.title}`,
+      title: doc.title,
+      author: doc.author_name?.join(', ') || 'Unknown Author',
+      description: doc.first_sentence?.[0] || (doc.subject ? `A book about ${doc.subject.slice(0, 3).join(', ')}.` : ''),
+      cover: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : '',
+      pageCount: doc.number_of_pages_median || doc.number_of_pages || 0,
+    }));
   } catch (error) {
-    console.warn('Error searching Google Books API:', error.message || error);
+    console.warn('Error searching Open Library API:', error.message || error);
   }
 
   return [];

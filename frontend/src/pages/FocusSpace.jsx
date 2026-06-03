@@ -109,26 +109,22 @@ export default function FocusSpace({ user }) {
   const isRightPanelOpen = (isSidebarOpen || showPalettePanel) && !isZenMode;
 
   useEffect(() => {
+    if (isRightPanelOpen) {
+      setIsMinimized(true);
+    }
+  }, [isRightPanelOpen]);
+
+  useEffect(() => {
     const placeSessionPanel = () => {
       const panelWidth = isMinimized ? 192 : 320;
-      const panelHeight = isMinimized ? 88 : 520;
       const reservedRight = isRightPanelOpen && window.innerWidth >= 1024 ? 480 : 0;
-      const rightLaneEdge = Math.max(24, window.innerWidth - reservedRight - panelWidth - 40);
-      const maxX = Math.max(24, rightLaneEdge);
-      const maxY = Math.max(120, window.innerHeight - panelHeight - 32);
+      const availableWidth = Math.max(panelWidth + 48, window.innerWidth - reservedRight);
+      const maxX = Math.max(24, availableWidth - panelWidth - 32);
+      const y = Math.min(205, Math.max(120, window.innerHeight - 140));
 
-      setSessionPanelPosition(prev => {
-        const defaultX = isRightPanelOpen && window.innerWidth >= 1024
-          ? rightLaneEdge
-          : Math.min(Math.max(32, (window.innerWidth - reservedRight - panelWidth) / 2), maxX);
-        const defaultY = Math.min(Math.max(144, (window.innerHeight - panelHeight) / 2 + 80), maxY);
-        const nextX = prev.x ? prev.x : defaultX;
-        const nextY = prev.y ? prev.y : defaultY;
-
-        return {
-          x: Math.min(Math.max(24, nextX), maxX),
-          y: Math.min(Math.max(120, nextY), maxY),
-        };
+      setSessionPanelPosition({
+        x: Math.min(Math.max(24, (availableWidth - panelWidth) / 2), maxX),
+        y,
       });
     };
 
@@ -154,8 +150,15 @@ export default function FocusSpace({ user }) {
 
   useEffect(() => {
     if (safeUser?.id) {
-      getProfile(safeUser.id).then(p => { setXp(p.xp || 0); setLevel(p.level || 1); });
-      fetchLogs(safeUser.id).then(data => setLogs(Array.isArray(data) ? data.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)) : []));
+      getProfile(safeUser.id)
+        .then(p => { setXp(p.xp || 0); setLevel(p.level || 1); })
+        .catch(() => {});
+      fetchLogs(safeUser.id)
+        .then(data => setLogs(Array.isArray(data) ? data.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)) : []))
+        .catch(err => {
+          console.error('Failed to load reading logs:', err);
+          setLogs([]);
+        });
     }
   }, [safeUser]);
 
@@ -475,9 +478,15 @@ export default function FocusSpace({ user }) {
         dragConstraints={containerRef}
         dragTransition={{ bounceStiffness: 600, bounceDamping: 30 }}
         onDragEnd={(_, info) => {
+          const panelWidth = isMinimized ? 192 : 320;
+          const panelHeight = isMinimized ? 88 : 520;
+          const reservedRight = isRightPanelOpen && window.innerWidth >= 1024 ? 480 : 0;
+          const maxX = Math.max(24, window.innerWidth - reservedRight - panelWidth - 32);
+          const maxY = Math.max(120, window.innerHeight - panelHeight - 32);
+
           setSessionPanelPosition(prev => ({
-            x: prev.x + info.offset.x,
-            y: prev.y + info.offset.y,
+            x: Math.min(Math.max(24, prev.x + info.offset.x), maxX),
+            y: Math.min(Math.max(120, prev.y + info.offset.y), maxY),
           }));
         }}
         layout

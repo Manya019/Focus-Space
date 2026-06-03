@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -43,7 +44,9 @@ func CreateLog(c *gin.Context) {
 
 	// Calculate XP: 100 XP per 10 mins + 10 XP per page
 	xpEarned := (req.DurationMinutes / 10 * 100) + (req.PagesRead * 10)
-	if xpEarned < 50 { xpEarned = 50 } // Minimum XP for logging
+	if xpEarned < 50 {
+		xpEarned = 50
+	} // Minimum XP for logging
 
 	// Update User XP, Level, and Streak
 	_, err = db.DB.Exec(`
@@ -78,10 +81,17 @@ func GetLogs(c *gin.Context) {
 	}
 
 	rows, err := db.DB.Query(`
-		SELECT id, user_id, book_name, pages_read, target_pages, reflection, created_at
+		SELECT id,
+		       user_id,
+		       book_name,
+		       pages_read,
+		       COALESCE(target_pages, 0),
+		       COALESCE(reflection, ''),
+		       created_at
 		FROM reading_logs WHERE user_id=$1 ORDER BY created_at DESC`, uid)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed"})
+		log.Printf("GetLogs query failed for user %s: %v", uid, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed", "details": err.Error()})
 		return
 	}
 	defer rows.Close()
@@ -90,10 +100,17 @@ func GetLogs(c *gin.Context) {
 	for rows.Next() {
 		var l models.ReadingLog
 		if err := rows.Scan(&l.ID, &l.UserID, &l.BookName, &l.PagesRead, &l.TargetPages, &l.Reflection, &l.CreatedAt); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "scan failed"})
+			log.Printf("GetLogs scan failed for user %s: %v", uid, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "scan failed", "details": err.Error()})
 			return
 		}
 		logs = append(logs, l)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("GetLogs rows failed for user %s: %v", uid, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "rows failed", "details": err.Error()})
+		return
 	}
 
 	if logs == nil {
