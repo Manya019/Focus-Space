@@ -31,7 +31,7 @@ export const searchBooks = async (query) => {
       }));
     }
   } catch (error) {
-    console.warn('Error searching Google Books API, using local fallback:', error.message || error);
+    console.warn('Error searching Google Books API:', error.message || error);
   }
 
   return [];

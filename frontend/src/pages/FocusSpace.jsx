@@ -113,14 +113,17 @@ export default function FocusSpace({ user }) {
       const panelWidth = isMinimized ? 192 : 320;
       const panelHeight = isMinimized ? 88 : 520;
       const reservedRight = isRightPanelOpen && window.innerWidth >= 1024 ? 480 : 0;
-      const maxX = Math.max(24, window.innerWidth - reservedRight - panelWidth - 32);
+      const rightLaneEdge = Math.max(24, window.innerWidth - reservedRight - panelWidth - 40);
+      const maxX = Math.max(24, rightLaneEdge);
       const maxY = Math.max(120, window.innerHeight - panelHeight - 32);
 
       setSessionPanelPosition(prev => {
-        const defaultX = Math.min(Math.max(32, (window.innerWidth - reservedRight - panelWidth) / 2), maxX);
+        const defaultX = isRightPanelOpen && window.innerWidth >= 1024
+          ? rightLaneEdge
+          : Math.min(Math.max(32, (window.innerWidth - reservedRight - panelWidth) / 2), maxX);
         const defaultY = Math.min(Math.max(144, (window.innerHeight - panelHeight) / 2 + 80), maxY);
-        const nextX = prev.x || defaultX;
-        const nextY = prev.y || defaultY;
+        const nextX = prev.x ? prev.x : defaultX;
+        const nextY = prev.y ? prev.y : defaultY;
 
         return {
           x: Math.min(Math.max(24, nextX), maxX),

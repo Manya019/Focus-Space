@@ -11,9 +11,13 @@ export default function SessionPanel({ draft, onSubmit, isMinimized, onMinimize,
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [formError, setFormError] = useState('');
 
   const handleSearch = async (query) => {
     draft.setBook(query);
+    setFieldErrors(prev => ({ ...prev, book: false }));
+    setFormError('');
     if (query.length > 2) {
       setIsSearching(true);
       const results = await searchBooks(query);
@@ -29,7 +33,27 @@ export default function SessionPanel({ draft, onSubmit, isMinimized, onMinimize,
   const selectBook = (book) => {
     draft.setBook(book.title);
     if (book.pageCount) draft.setTargetPages(book.pageCount);
+    setFieldErrors(prev => ({ ...prev, book: false, targetPages: false }));
+    setFormError('');
     setShowResults(false);
+  };
+
+  const validateAndSubmit = () => {
+    const nextErrors = {
+      book: !draft.book.trim(),
+      targetPages: !draft.targetPages || Number(draft.targetPages) <= 0,
+      pages: draft.pages === '' || Number(draft.pages) < 0,
+    };
+
+    setFieldErrors(nextErrors);
+
+    if (nextErrors.book || nextErrors.targetPages || nextErrors.pages) {
+      setFormError('Add a book title, target pages, and pages read before logging.');
+      return;
+    }
+
+    setFormError('');
+    onSubmit();
   };
 
   const handleEdit = (log) => {
@@ -110,8 +134,11 @@ export default function SessionPanel({ draft, onSubmit, isMinimized, onMinimize,
           <div className="space-y-3">
             <div className="relative group/search">
               <input
-                className="w-full bg-white/5 border border-white/5 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:bg-white/10 focus:border-accent/50 outline-none transition-all placeholder:text-muted/50"
-                placeholder="Search book title..."
+                className={cn(
+                  "w-full bg-white/5 border rounded-xl pl-10 pr-4 py-2.5 text-sm focus:bg-white/10 outline-none transition-all placeholder:text-muted/50",
+                  fieldErrors.book ? "border-red-400/70 focus:border-red-400" : "border-white/5 focus:border-accent/50"
+                )}
+                placeholder="Search or type your own book title..."
                 value={draft.book}
                 onChange={(e) => handleSearch(e.target.value)}
                 onFocus={() => searchResults.length > 0 && setShowResults(true)}
@@ -137,25 +164,45 @@ export default function SessionPanel({ draft, onSubmit, isMinimized, onMinimize,
                   ))}
                 </div>
               )}
+
+              {showResults && !isSearching && draft.book.length > 2 && searchResults.length === 0 && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-[#0f172a] border border-white/10 rounded-2xl shadow-2xl z-[60] p-3">
+                  <p className="text-[11px] text-muted">No API result found. Keep typing to use your own title.</p>
+                </div>
+              )}
             </div>
             
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-muted uppercase ml-1">Target</label>
                 <input
-                  className="w-full bg-white/5 border border-white/5 rounded-xl px-4 py-2 text-sm focus:bg-white/10 focus:border-accent/50 outline-none transition-all"
+                  className={cn(
+                    "w-full bg-white/5 border rounded-xl px-4 py-2 text-sm focus:bg-white/10 outline-none transition-all",
+                    fieldErrors.targetPages ? "border-red-400/70 focus:border-red-400" : "border-white/5 focus:border-accent/50"
+                  )}
                   type="number"
                   value={draft.targetPages}
-                  onChange={(e) => draft.setTargetPages(e.target.value)}
+                  onChange={(e) => {
+                    draft.setTargetPages(e.target.value);
+                    setFieldErrors(prev => ({ ...prev, targetPages: false }));
+                    setFormError('');
+                  }}
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-muted uppercase ml-1">Read</label>
                 <input
-                  className="w-full bg-white/5 border border-white/5 rounded-xl px-4 py-2 text-sm focus:bg-white/10 focus:border-accent/50 outline-none transition-all"
+                  className={cn(
+                    "w-full bg-white/5 border rounded-xl px-4 py-2 text-sm focus:bg-white/10 outline-none transition-all",
+                    fieldErrors.pages ? "border-red-400/70 focus:border-red-400" : "border-white/5 focus:border-accent/50"
+                  )}
                   type="number"
                   value={draft.pages}
-                  onChange={(e) => draft.setPages(e.target.value)}
+                  onChange={(e) => {
+                    draft.setPages(e.target.value);
+                    setFieldErrors(prev => ({ ...prev, pages: false }));
+                    setFormError('');
+                  }}
                 />
               </div>
             </div>
@@ -169,10 +216,16 @@ export default function SessionPanel({ draft, onSubmit, isMinimized, onMinimize,
 
             <button 
               className="w-full py-3 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-bold shadow-lg shadow-accent/20 transition-all active:scale-[0.98]" 
-              onClick={onSubmit}
+              onClick={validateAndSubmit}
             >
               Log Session
             </button>
+
+            {formError && (
+              <p className="text-[11px] text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+                {formError}
+              </p>
+            )}
           </div>
 
           {logs && logs.length > 0 && (
