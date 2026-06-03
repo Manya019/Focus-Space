@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import React, { useEffect, useState } from 'react';
 import { SignedIn, SignedOut, UserButton, useUser, SignInButton, useClerk } from '@clerk/clerk-react';
 import { Menu, X, Users, BookOpen, MessageSquare, Star, LayoutDashboard, LogOut, ShieldAlert, Zap, ChevronLeft } from 'lucide-react';
 import LandingPage from './pages/LandingPage';
