@@ -9,7 +9,6 @@ import (
 	"github.com/joho/godotenv"
 
 	"readingroom/db"
-	"readingroom/utils"
 )
 
 func main() {
