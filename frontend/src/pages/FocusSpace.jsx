@@ -349,7 +349,7 @@ export default function FocusSpace({ user }) {
   };
 
   return (
-    <div ref={containerRef} className="relative h-screen w-full overflow-hidden transition-all duration-1000 isolate">
+    <div ref={containerRef} className="relative h-full min-h-0 w-full overflow-hidden overscroll-none transition-all duration-1000 isolate">
       <audio ref={audioRef} src={currentSoundscape?.url} loop autoPlay={!!currentSoundscape} />
       
       {/* Dynamic Background */}
