@@ -168,6 +168,133 @@ export default function PomodoroTimer({ variant }) {
     );
   }
 
+  if (variant === 'sidebar') {
+    return (
+      <div className="w-full bg-slate-900/50 backdrop-blur-xl border border-slate-800/50 rounded-2xl p-3 shadow-xl relative overflow-hidden transition-all duration-500 hover:border-slate-700/50">
+        <div className={cn(
+          "absolute -top-10 -right-10 w-24 h-24 blur-[40px] opacity-20 transition-all duration-1000 pointer-events-none",
+          mode === 'work' ? "bg-indigo-500" : mode === 'break' ? "bg-emerald-500" : "bg-purple-500"
+        )}></div>
+
+        <div className="relative z-10 flex flex-col gap-3">
+          <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-950/40 border border-slate-800/40 p-1">
+            {Object.entries(modeConfig).map(([key, config]) => {
+              const Icon = config.icon;
+              const isActive = mode === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setTimerMode(key)}
+                  title={config.label}
+                  className={cn(
+                    "h-9 flex items-center justify-center rounded-lg transition-all duration-300",
+                    isActive 
+                      ? config.activeTab 
+                      : "text-slate-500 hover:text-slate-300"
+                  )}
+                >
+                  <Icon size={14} />
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-2xl font-black text-white font-mono leading-none">
+                {formatTime(timeLeft)}
+              </div>
+              <div className="mt-1 flex items-center gap-1.5">
+                <div className={cn("w-1.5 h-1.5 rounded-full", isRunning ? "animate-pulse" : "", activeMode.dot)} />
+                <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">
+                  {isRunning ? 'Flowing' : 'Paused'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 gap-1.5">
+              <button
+                onClick={toggleTimer}
+                title={isRunning ? "Pause" : "Start"}
+                className={cn(
+                  "w-10 h-10 flex items-center justify-center rounded-xl transition-all active:scale-90 shadow-lg",
+                  isRunning 
+                    ? "bg-slate-800 text-white hover:bg-slate-700" 
+                    : activeMode.button
+                )}
+              >
+                {isRunning ? <Pause size={16} fill="currentColor" /> : <Play size={16} className="ml-0.5" fill="currentColor" />}
+              </button>
+              
+              <button
+                onClick={resetTimer}
+                title="Reset"
+                className="w-10 h-10 flex items-center justify-center bg-slate-900/40 hover:bg-slate-800 text-slate-500 hover:text-white rounded-xl border border-slate-800/50 transition-all active:scale-90"
+              >
+                <RotateCcw size={15} />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {presets.map((p) => (
+              <button
+                key={p.value}
+                onClick={() => handlePreset(p.value)}
+                className="flex-1 h-8 rounded-lg bg-slate-950/40 border border-slate-800/40 text-[10px] font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all"
+              >
+                {p.label}
+              </button>
+            ))}
+            <button 
+              onClick={() => setShowCustom(!showCustom)}
+              title="Custom"
+              className={cn(
+                "w-8 h-8 flex items-center justify-center rounded-lg transition-all",
+                showCustom ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20" : "bg-slate-950/40 border border-slate-800/40 text-slate-400 hover:text-white"
+              )}
+            >
+              <Timer size={12} />
+            </button>
+          </div>
+
+          {showCustom && (
+            <motion.form 
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              onSubmit={handleCustomSubmit}
+              className="flex gap-2"
+            >
+              <input 
+                type="number"
+                value={customVal}
+                onChange={(e) => setCustomVal(e.target.value)}
+                className="min-w-0 flex-1 bg-slate-950/60 border border-slate-800/60 rounded-lg px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-indigo-500/50 transition-all"
+                placeholder="Minutes"
+              />
+              <button 
+                type="submit"
+                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all"
+              >
+                Set
+              </button>
+            </motion.form>
+          )}
+
+          <div className="w-full h-1 bg-slate-950 rounded-full overflow-hidden border border-slate-800/20">
+            <div 
+              className={cn(
+                "h-full transition-all duration-1000 ease-linear",
+                activeMode.progress
+              )}
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full max-w-[320px] bg-slate-900/60 backdrop-blur-xl border border-slate-800/50 rounded-[32px] p-5 shadow-2xl relative overflow-hidden group transition-all duration-500 hover:border-slate-700/50">
       {/* Background Glow */}
