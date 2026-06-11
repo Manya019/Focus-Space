@@ -11,11 +11,17 @@ export const PomoProvider = ({ children }) => {
   const [isRunning, setIsRunning] = useState(false);
   const [mode, setMode] = useState('work'); // 'work', 'break', 'longBreak'
   const [cycles, setCycles] = useState(0);
+  const [isSimpleTimer, setIsSimpleTimer] = useState(false);
   
   const intervalRef = useRef(null);
 
   const handleSwitchMode = () => {
     setIsRunning(false);
+    if (isSimpleTimer) {
+      // Simple timer mode: just stop at zero, no cycling
+      playCue('switch');
+      return;
+    }
     if (mode === 'work') {
       const nextCycles = cycles + 1;
       setCycles(nextCycles);
@@ -34,6 +40,14 @@ export const PomoProvider = ({ children }) => {
     playCue('switch');
   };
 
+  const toggleTimerMode = () => {
+    setIsSimpleTimer(prev => !prev);
+    setIsRunning(false);
+    setMode('work');
+    setTimeLeft(0);
+    setCycles(0);
+  };
+
   const playCue = (type) => {
     try {
       const sounds = {
@@ -49,13 +63,27 @@ export const PomoProvider = ({ children }) => {
   useEffect(() => {
     if (isRunning) {
       intervalRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            handleSwitchMode();
-            return 0;
-          }
-          return prev - 1;
-        });
+        if (isSimpleTimer && mode === 'work') {
+          // Focus in timer mode: count UP from 00:00
+          setTimeLeft((prev) => prev + 1);
+        } else if (isSimpleTimer) {
+          // Break/Rest in timer mode: count DOWN
+          setTimeLeft((prev) => {
+            if (prev <= 1) {
+              handleSwitchMode();
+              return 0;
+            }
+            return prev - 1;
+          });
+        } else {
+          setTimeLeft((prev) => {
+            if (prev <= 1) {
+              handleSwitchMode();
+              return 0;
+            }
+            return prev - 1;
+          });
+        }
       }, 1000);
     } else {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -63,7 +91,7 @@ export const PomoProvider = ({ children }) => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [isRunning, mode, cycles, workDuration, breakDuration, longBreakDuration]);
+  }, [isRunning, mode, cycles, workDuration, breakDuration, longBreakDuration, isSimpleTimer]);
 
   const toggleTimer = () => {
     setIsRunning(!isRunning);
@@ -72,14 +100,26 @@ export const PomoProvider = ({ children }) => {
   
   const resetTimer = () => {
     setIsRunning(false);
-    setMode('work');
-    setTimeLeft(workDuration * 60);
-    setCycles(0);
+    if (isSimpleTimer) {
+      if (mode === 'work') setTimeLeft(0);
+      else if (mode === 'break') setTimeLeft(breakDuration * 60);
+      else if (mode === 'longBreak') setTimeLeft(longBreakDuration * 60);
+    } else {
+      setMode('work');
+      setTimeLeft(workDuration * 60);
+      setCycles(0);
+    }
   };
 
   const setTimerMode = (newMode, customDuration) => {
     setIsRunning(false);
     setMode(newMode);
+    
+    if (isSimpleTimer && newMode === 'work') {
+      // Focus in timer mode: purely navigational, reset to 00:00
+      setTimeLeft(0);
+      return;
+    }
     
     let duration = 0;
     if (customDuration) {
@@ -112,11 +152,13 @@ export const PomoProvider = ({ children }) => {
     workDuration,
     breakDuration,
     longBreakDuration,
+    isSimpleTimer,
     toggleTimer,
     resetTimer,
     setTimerMode,
+    toggleTimerMode,
     updateDurations,
-    progress: (( (mode === 'work' ? workDuration : (mode === 'break' ? breakDuration : longBreakDuration)) * 60 - timeLeft) / ((mode === 'work' ? workDuration : (mode === 'break' ? breakDuration : longBreakDuration)) * 60)) * 100
+    progress: isSimpleTimer && mode === 'work' ? 0 : (( (mode === 'work' ? workDuration : (mode === 'break' ? breakDuration : longBreakDuration)) * 60 - timeLeft) / ((mode === 'work' ? workDuration : (mode === 'break' ? breakDuration : longBreakDuration)) * 60)) * 100
   };
 
   return <PomoContext.Provider value={value}>{children}</PomoContext.Provider>;

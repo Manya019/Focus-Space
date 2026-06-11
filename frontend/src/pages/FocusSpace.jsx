@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  Maximize2, Minimize2, Video, Shuffle, MessageSquare, 
+  Maximize2, Minimize2, Video, Shuffle, MessageSquare, Book,
   Eye, EyeOff, Trophy, Sparkles, Music, Volume2, Users, Palette 
 } from "lucide-react";
 import SessionPanel from "../components/SessionPanel";
@@ -43,22 +43,13 @@ const defaultCategorizedBackgrounds = {
 export default function FocusSpace({ user }) {
   const safeUser = user || null;
   const containerRef = useRef(null);
-  const boxRef = useRef(null);
   const audioRef = useRef(null);
 
-  // Initialize session panel position with a function to avoid (0,0) issue
-  const [sessionPanelPosition, setSessionPanelPosition] = useState(() => {
-    const panelWidth = 320;
-    const panelHeight = 88;
-    const availableWidth = Math.max(panelWidth + 48, typeof window !== 'undefined' ? window.innerWidth : 1024);
-    const maxX = Math.max(24, availableWidth - panelWidth - 32);
-    return {
-      x: Math.min(Math.max(24, (availableWidth - panelWidth) / 2), maxX),
-      y: 205,
-    };
-  });
-
-
+  // Pomodoro timer drag position (starts centered at original position)
+  const [pomoPosition, setPomoPosition] = useState(() => ({
+    x: typeof window !== 'undefined' ? Math.max(24, (window.innerWidth - 320) / 2) : 0,
+    y: 112,
+  }));
 
   // States
   const [logs, setLogs] = useState([]);
@@ -108,7 +99,7 @@ export default function FocusSpace({ user }) {
   const [currentSoundscape, setCurrentSoundscape] = useState({ id: 'forest', name: 'Forest Birds Ambient', url: 'https://www.soundjay.com/nature/forest-birds-01.mp3' });
   const [volume, setVolume] = useState(0.5);
   const [roomTotalPages, setRoomTotalPages] = useState(0);
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [showSessionDropdown, setShowSessionDropdown] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [currentTheme, setCurrentTheme] = useState('Nature');
   const [themeVideos, setThemeVideos] = useState([]);
@@ -118,36 +109,6 @@ export default function FocusSpace({ user }) {
   const draft = useSessionDraft();
   const { workDuration, timeLeft, mode } = usePomo();
   const isRightPanelOpen = (isSidebarOpen || showPalettePanel) && !isZenMode;
-
-  useEffect(() => {
-    if (isRightPanelOpen) {
-      setIsMinimized(true);
-    }
-  }, [isRightPanelOpen]);
-
-  useEffect(() => {
-    const placeSessionPanel = () => {
-      const panelWidth = isMinimized ? 192 : 320;
-      const panelHeight = isMinimized ? 88 : 520;
-      const reservedRight = isRightPanelOpen && window.innerWidth >= 1024 ? 480 : 0;
-      const availableWidth = Math.max(panelWidth + 48, window.innerWidth - reservedRight);
-      
-      // Position below Pomodoro timer when minimized, otherwise centered
-      const pomodoroBottomY = isMinimized ? 205 : 260;
-      const maxX = Math.max(24, availableWidth - panelWidth - 32);
-      const maxY = Math.max(120, window.innerHeight - panelHeight - 32);
-      const y = Math.min(pomodoroBottomY, maxY);
-
-      setSessionPanelPosition({
-        x: Math.min(Math.max(24, (availableWidth - panelWidth) / 2), maxX),
-        y,
-      });
-    };
-
-    placeSessionPanel();
-    window.addEventListener('resize', placeSessionPanel);
-    return () => window.removeEventListener('resize', placeSessionPanel);
-  }, [isMinimized, isRightPanelOpen]);
 
   const soundscapes = [
     { id: 'forest', name: 'Forest', url: 'https://www.soundjay.com/nature/forest-birds-01.mp3' },
@@ -427,17 +388,58 @@ export default function FocusSpace({ user }) {
             <ControlButton icon={Shuffle} onClick={handleShuffleBg} tooltip="Shuffle Background" />
 
             <ControlButton icon={MessageSquare} onClick={() => { setIsSidebarOpen(!isSidebarOpen); setShowPalettePanel(false); }} active={isSidebarOpen} tooltip="Chat & Presence" />
+
+            <ControlButton icon={Book} onClick={() => setShowSessionDropdown(!showSessionDropdown)} active={showSessionDropdown} tooltip="Log Session" />
           </div>
         </div>
       </div>
 
-      {/* Timer Card on Top */}
+      {/* Session Panel Dropdown */}
+      <AnimatePresence>
+        {showSessionDropdown && !isZenMode && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+            className="fixed right-8 top-[88px] z-50"
+          >
+            <div className="w-80">
+              <SessionPanel draft={draft} onSubmit={submitSession} isMinimized={false} onMinimize={() => setShowSessionDropdown(false)} logs={logs} user={safeUser} onLogsUpdate={(updated) => setLogs(updated.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)))} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Timer Card — Draggable */}
       {!isZenMode && (
-        <div className="absolute top-28 left-8 right-8 z-40 flex justify-center pointer-events-none transition-all duration-700">
-          <div className="pointer-events-auto">
-            <PomodoroTimer />
-          </div>
-        </div>
+        <motion.div
+          drag
+          dragMomentum={false}
+          dragElastic={0.1}
+          dragTransition={{ bounceStiffness: 600, bounceDamping: 30 }}
+          onDragEnd={(_, info) => {
+            const panelWidth = 320;
+            const panelHeight = 260;
+            const minX = 24;
+            const maxX = Math.max(minX, window.innerWidth - panelWidth - 32);
+            const minY = 24;
+            const maxY = Math.max(minY, window.innerHeight - panelHeight - 32);
+            setPomoPosition(prev => ({
+              x: Math.max(minX, Math.min(prev.x + info.offset.x, maxX)),
+              y: Math.max(minY, Math.min(prev.y + info.offset.y, maxY)),
+            }));
+          }}
+          animate={{
+            x: pomoPosition.x,
+            y: pomoPosition.y,
+          }}
+          transition={{ type: 'spring', stiffness: 350, damping: 35 }}
+          className="fixed z-40 cursor-grab active:cursor-grabbing"
+          style={{ top: 0, left: 0 }}
+        >
+          <PomodoroTimer />
+        </motion.div>
       )}
 
       {/* Main Focus Area */}
@@ -446,16 +448,39 @@ export default function FocusSpace({ user }) {
           "h-full w-full flex items-center justify-center p-8 transition-[padding] duration-300",
           isRightPanelOpen && "lg:pr-[480px]"
         )}
-      >
-        <AnimatePresence>
-          {isZenMode && (
-            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="flex flex-col items-center gap-12">
-              <PomodoroTimer />
-            </motion.div>
-          )}
+      />
 
-        </AnimatePresence>
-      </div>
+      {/* Zen Mode Timer — Draggable */}
+      <AnimatePresence>
+        {isZenMode && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1, x: pomoPosition.x, y: pomoPosition.y }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ type: 'spring', stiffness: 350, damping: 35 }}
+            drag
+            dragMomentum={false}
+            dragElastic={0.1}
+            dragTransition={{ bounceStiffness: 600, bounceDamping: 30 }}
+            onDragEnd={(_, info) => {
+              const panelWidth = 320;
+              const panelHeight = 260;
+              const minX = 24;
+              const maxX = Math.max(minX, window.innerWidth - panelWidth - 32);
+              const minY = 24;
+              const maxY = Math.max(minY, window.innerHeight - panelHeight - 32);
+              setPomoPosition(prev => ({
+                x: Math.max(minX, Math.min(prev.x + info.offset.x, maxX)),
+                y: Math.max(minY, Math.min(prev.y + info.offset.y, maxY)),
+              }));
+            }}
+            className="fixed z-50 cursor-grab active:cursor-grabbing"
+            style={{ top: 0, left: 0 }}
+          >
+            <PomodoroTimer />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Sidebars */}
       <AnimatePresence>
@@ -486,50 +511,7 @@ export default function FocusSpace({ user }) {
         )}
       </AnimatePresence>
 
-      <motion.div 
-        ref={boxRef} 
-        drag 
-        dragMomentum={false}
-        dragElastic={0.15}
-        dragTransition={{ bounceStiffness: 600, bounceDamping: 30 }}
-        onDragEnd={(_, info) => {
-          const panelWidth = isMinimized ? 192 : 320;
-          const panelHeight = isMinimized ? 88 : 520;
-          const reservedRight = isRightPanelOpen && window.innerWidth >= 1024 ? 480 : 0;
-          
-          // Calculate safe boundaries
-          const minX = 24;
-          const maxX = Math.max(minX, window.innerWidth - reservedRight - panelWidth - 32);
-          const minY = 120;
-          const maxY = Math.max(minY, window.innerHeight - panelHeight - 32);
 
-          // Apply constraints to new position
-          setSessionPanelPosition(prev => ({
-            x: Math.max(minX, Math.min(prev.x + info.offset.x, maxX)),
-            y: Math.max(minY, Math.min(prev.y + info.offset.y, maxY)),
-          }));
-        }}
-        initial={{ x: sessionPanelPosition.x, y: sessionPanelPosition.y, opacity: 1 }}
-        animate={{
-          x: sessionPanelPosition.x,
-          y: sessionPanelPosition.y,
-          opacity: isZenMode ? 0 : 1,
-          scale: isZenMode ? 0.95 : 1,
-        }}
-        transition={{ type: 'spring', stiffness: 350, damping: 35 }}
-        className={cn(
-          "fixed z-40 cursor-grab active:cursor-grabbing hover:shadow-2xl",
-          isMinimized ? "w-48" : "w-80",
-          isZenMode && "pointer-events-none"
-        )}
-        style={{ 
-          pointerEvents: isZenMode ? 'none' : 'auto',
-          top: 0,
-          left: 0,
-        }}
-      >
-        <SessionPanel draft={draft} onSubmit={submitSession} isMinimized={isMinimized} onMinimize={() => setIsMinimized(!isMinimized)} logs={logs} user={safeUser} onLogsUpdate={(updated) => setLogs(updated.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)))} />
-      </motion.div>
 
       <AnimatePresence>{isZenMode && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute bottom-12 left-1/2 -translate-x-1/2 text-white/20 text-[10px] font-bold uppercase tracking-[0.5em]">Press ESC or click anywhere to exit Full Screen Mode</motion.div>}</AnimatePresence>
 
